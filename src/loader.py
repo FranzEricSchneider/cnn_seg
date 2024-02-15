@@ -1,6 +1,53 @@
+"""
+Dataloader and related tools
+"""
+
 import cv2
+import json
+import os
+from pathlib import Path
 from torch.utils.data import DataLoader, Dataset
-from torchvision.transforms import Compose, ToPILImage, ToTensor
+from torchvision.transforms import v2
+
+from utils import tensor2np
+
+
+def build_transform(augpath):
+    assert augpath.is_file()
+    return v2.Compose(
+        [getattr(v2, name)(**kwargs) for name, kwargs in json.load(augpath.open("r"))]
+    )
+
+
+# TODO: Add a debug step where we grab an image from each dataset or something
+def get_loaders(config):
+
+    loaders = []
+    for subdir, shuffle in (("train", True), ("val", False), ("test", False)):
+
+        augpath = Path(config[f"{subdir}_augmentation_path"])
+
+        imdir = config["data_dir"] / subdir / "images"
+        maskdir = config["data_dir"] / subdir / "masks"
+
+        # TODO: Add and troubleshoot transforms
+        dataset = SegmentationDataset(
+            sorted(imdir.glob("*.jpg")),
+            sorted(maskdir.glob("*.png")),
+            transforms=build_transform(augpath),
+        )
+
+        loaders.append(
+            DataLoader(
+                dataset,
+                batch_size=config["batch_size"],
+                shuffle=shuffle,
+                num_workers=os.cpu_count() // 2,
+            )
+        )
+
+    return loaders
+
 
 # Inspired by
 # https://pyimagesearch.com/2021/11/08/u-net-training-image-segmentation-models-in-pytorch/
@@ -10,10 +57,10 @@ class SegmentationDataset(Dataset):
         self.impaths = impaths
         self.maskpaths = maskpaths
         if transforms is None:
-            self.transforms = Compose(
+            self.transforms = v2.Compose(
                 [
-                    ToPILImage(),
-                    ToTensor(),
+                    v2.ToPILImage(),
+                    v2.ToTensor(),
                 ]
             )
         else:
@@ -39,32 +86,36 @@ class SegmentationDataset(Dataset):
         return (image, mask)
 
 
-def tensor2np(tensor):
-    return tensor.detach().cpu().numpy()
-
-
 # Test out the loader
 if __name__ == "__main__":
 
+    import argparse
     from pathlib import Path
 
-    root = Path("/home/fschneider/Downloads/SIMSEG/")
-    imdir = root / "images"
-    maskdir = root / "masks"
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "rootdir",
+        help="Path to images/ and masks/ root dir for visualization",
+        type=Path,
+    )
+    args = parser.parse_args()
+
+    imdir = args.rootdir / "images"
+    maskdir = args.rootdir / "masks"
 
     dataset = SegmentationDataset(
         sorted(imdir.glob("*jpg")),
         sorted(maskdir.glob("*png")),
         transforms=None,
     )
-
-    import os
-
     dataloader = DataLoader(
         dataset,
         batch_size=16,
         shuffle=True,
-        num_workers=os.cpu_count() // 2,
+        num_workers=1,
     )
 
     from matplotlib import pyplot
