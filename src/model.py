@@ -1,13 +1,40 @@
 import json
 from matplotlib import pyplot
 import numpy
+import time
 import torch
 import wandb
 
 import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
+import torchseg
 
 from utils import tensor2np
+
+
+def vis_image(tensor, gt_mask, pred_mask, save_path):
+
+    from matplotlib import pyplot
+
+    pyplot.figure(figsize=(5, 3))
+
+    pyplot.subplot(1, 3, 1)
+    pyplot.imshow(tensor2np(tensor).transpose(1, 2, 0))  # convert CHW -> HWC
+    pyplot.title("Image")
+    pyplot.axis("off")
+
+    pyplot.subplot(1, 3, 2)
+    pyplot.imshow(tensor2np(gt_mask).squeeze(), vmin=0, vmax=1)
+    pyplot.title("Ground truth")
+    pyplot.axis("off")
+
+    pyplot.subplot(1, 3, 3)
+    pyplot.imshow(tensor2np(pred_mask).squeeze(), vmin=0, vmax=1)
+    pyplot.title("Prediction")
+    pyplot.axis("off")
+
+    pyplot.tight_layout()
+    pyplot.savefig(save_path)
 
 
 # Inspired by
@@ -21,7 +48,7 @@ class SegModel(pl.LightningModule):
         self.run = run
 
         super().__init__()
-        self.model = smp.create_model(
+        self.model = torchseg.create_model(
             self.config["architecture"],
             encoder_name=self.config["encoder"],
             in_channels=3,
@@ -36,7 +63,7 @@ class SegModel(pl.LightningModule):
         self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
         self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
 
-        self.loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+        self.loss_fn = torchseg.losses.DiceLoss(torchseg.losses.BINARY_MODE, from_logits=True)
 
     def forward(self, image):
         # normalize image here
@@ -66,22 +93,25 @@ class SegModel(pl.LightningModule):
 
         logits_mask = self.forward(image)
 
-        # Predicted mask contains logits, and loss_fn param `from_logits` is set to True
+        # Predicted mask contains logits, and loss_fn param `from_logits` is
+        # set to True
         loss = self.loss_fn(logits_mask, mask)
 
-        # Let's compute metrics for some threshold first convert mask values to
-        # probabilities, then apply thresholding
+        # Convert mask values to probabilities, then apply thresholding
         pred_mask = (logits_mask.sigmoid() > 0.5).float()
 
-        # We will compute IoU metric by two ways
-        #   1. dataset-wise
-        #   2. image-wise
-        # but for now we just compute true positive, false positive, false negative and
-        # true negative 'pixels' for each image and class
-        # these values will be aggregated in the end of an epoch
+        # Compute TN/FP/TP/FN pixels for each image
         tp, fp, fn, tn = smp.metrics.get_stats(
             pred_mask.int(), mask.int(), mode="binary"
         )
+
+        if stage == "valid" and self.config["vis_val_images"]:
+            vis_image(
+                tensor=image[0],
+                gt_mask=mask[0],
+                pred_mask=pred_mask[0],
+                save_path=f"/tmp/val_vis_{int(time.time() * 1e6)}.jpg",
+            )
 
         return {
             "loss": loss,
@@ -131,7 +161,6 @@ class SegModel(pl.LightningModule):
 
         self.log_dict(metrics, prog_bar=True)
 
-    # TODO: Try removing the stage from shared_step
     def training_step(self, batch, batch_idx):
         return self.shared_step(batch, "train")
 

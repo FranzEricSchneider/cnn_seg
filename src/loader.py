@@ -12,6 +12,8 @@ from torchvision.transforms import v2
 from utils import tensor2np
 
 
+# TODO: Check out expanded transforms:
+# https://albumentations.ai/docs/examples/pytorch_semantic_segmentation/
 def build_transform(augpath):
     assert augpath.is_file()
     return v2.Compose(

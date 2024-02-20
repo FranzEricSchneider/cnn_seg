@@ -6,7 +6,7 @@ CONFIG = {
 
     "train": True,
 
-    "wandb": True,
+    "wandb": False,
     "wandb_print": [
         "architecture",
         "encoder",
@@ -46,6 +46,9 @@ CONFIG = {
     "train_augmentation_path": "../train_augmentations.json",
     "val_augmentation_path": "../val_augmentations.json",
     "test_augmentation_path": "../test_augmentations.json",
+
+    # Randomly view one validation image per batch
+    "vis_val_images": True,
 
     # Increase if you can handle it, generally
     "batch_size": 6,
