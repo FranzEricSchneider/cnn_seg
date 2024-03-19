@@ -63,7 +63,9 @@ class SegModel(pl.LightningModule):
         self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
         self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
 
-        self.loss_fn = torchseg.losses.DiceLoss(torchseg.losses.BINARY_MODE, from_logits=True)
+        self.loss_fn = torchseg.losses.DiceLoss(
+            torchseg.losses.BINARY_MODE, from_logits=True
+        )
 
     def forward(self, image):
         # normalize image here

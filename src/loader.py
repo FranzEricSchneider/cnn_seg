@@ -12,6 +12,9 @@ from torchvision.transforms import v2
 from utils import tensor2np
 
 
+TMPDIR = Path("/tmp/")
+
+
 # TODO: Check out expanded transforms:
 # https://albumentations.ai/docs/examples/pytorch_semantic_segmentation/
 def build_transform(augpath):
@@ -35,7 +38,7 @@ def get_loaders(config):
         # TODO: Add and troubleshoot transforms
         dataset = SegmentationDataset(
             sorted(imdir.glob("*.jpg")),
-            sorted(maskdir.glob("*.png")),
+            sorted(maskdir.glob("*.npy")),
             transforms=build_transform(augpath),
         )
 
@@ -47,6 +50,21 @@ def get_loaders(config):
                 num_workers=os.cpu_count() // 2,
             )
         )
+
+        if config["wandb"]:
+            wandb.save(augpath)
+            path = Path(TMPDIR).joinpath(f"{subdir}_files.json")
+            json.dump(
+                sorted(
+                    [
+                        (impath.name, maskpath.name)
+                        for impath, maskpath in zip(dataset.impaths, dataset.maskpaths)
+                    ]
+                ),
+                path.open("w"),
+                indent=4,
+            )
+            wandb.save(str(path))
 
     return loaders
 
@@ -76,12 +94,14 @@ class SegmentationDataset(Dataset):
     def __getitem__(self, idx):
 
         # Load the image from disk, swap its channels from BGR to RGB,
-        # and read the associated mask from disk in grayscale mode
+        # and read the associated mask, then convert it to 0-255 image type
         image = cv2.cvtColor(cv2.imread(str(self.impaths[idx])), cv2.COLOR_BGR2RGB)
-        mask = cv2.imread(str(self.maskpaths[idx]), 0)
+        mask = (numpy.load(self.maskpaths[idx]) * 255).astype(numpy.uint8)
 
         # Check to see if we are applying anything to both image and its mask
         image = self.transforms(image)
+        # TODO: We're going to need to split space-based transformations that
+        # should apply to both, and color-based transformations which shouldn't
         mask = self.transforms(mask)
 
         # Return a tuple of the image and its mask

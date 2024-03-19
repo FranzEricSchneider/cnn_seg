@@ -43,9 +43,9 @@ CONFIG = {
     # applied in the loader phase. The way to experiment with augmentations is
     # to make a copy of the file, set those that you want, and then select the
     # files one-by-one as a command-line argument.
-    "train_augmentation_path": "../train_augmentations.json",
-    "val_augmentation_path": "../val_augmentations.json",
-    "test_augmentation_path": "../test_augmentations.json",
+    "train_augmentation_path": "train_augmentations.json",
+    "val_augmentation_path": "val_augmentations.json",
+    "test_augmentation_path": "test_augmentations.json",
 
     # Randomly view one validation image per batch
     "vis_val_images": True,

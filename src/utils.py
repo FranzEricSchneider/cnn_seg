@@ -60,7 +60,10 @@ def load_config():
 
     parser = argparse.ArgumentParser(description="Set config via command line")
     parser.add_argument(
-        "data_dir", type=Path, help="Path to dir with all images and labels"
+        "data_dir",
+        type=Path,
+        help="Path to dir with all images and labels. Expected format is"
+        " data_dir/(train | test | val)/(images | masks)",
     )
     parser.add_argument("--wandb-print", nargs="+", default=None)
     parser.add_argument("--architecture", default=None)

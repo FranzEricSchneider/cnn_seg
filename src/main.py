@@ -5,11 +5,11 @@ from utils import load_config, login_wandb, wandb_run
 
 def main():
     config = load_config()
-    loaders = get_loaders(config)
     run = None
     if config["wandb"]:
         login_wandb(config)
         run = wandb_run(config)
+    loaders = get_loaders(config)
     model = SegModel(config, run)
     if config["train"]:
         run_train(loaders, model, config)
