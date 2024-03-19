@@ -67,6 +67,9 @@ class SegModel(pl.LightningModule):
             torchseg.losses.BINARY_MODE, from_logits=True
         )
 
+        # Save outputs from various stages
+        self.outputs = {"train": [], "val": [], "test": []}
+
     def forward(self, image):
         # normalize image here
         image = (image - self.mean) / self.std
@@ -115,15 +118,18 @@ class SegModel(pl.LightningModule):
                 save_path=f"/tmp/val_vis_{int(time.time() * 1e6)}.jpg",
             )
 
-        return {
-            "loss": loss,
-            "tp": tp,
-            "fp": fp,
-            "fn": fn,
-            "tn": tn,
-        }
+        self.outputs[stage].append(
+            {
+                "loss": loss,
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
+                "tn": tn,
+            }
+        )
 
     def shared_epoch_end(self, outputs, stage):
+
         # aggregate step metics
         tp = torch.cat([x["tp"] for x in outputs])
         fp = torch.cat([x["fp"] for x in outputs])
@@ -163,23 +169,35 @@ class SegModel(pl.LightningModule):
 
         self.log_dict(metrics, prog_bar=True)
 
+    def on_training_epoch_start(self):
+        super().on_training_epoch_start()
+        self.outputs["train"] = []
+
     def training_step(self, batch, batch_idx):
         return self.shared_step(batch, "train")
 
-    def training_epoch_end(self, outputs):
-        return self.shared_epoch_end(outputs, "train")
+    def on_training_epoch_end(self):
+        return self.shared_epoch_end(self.outputs["train"], "train")
+
+    def on_validation_epoch_start(self):
+        super().on_validation_epoch_start()
+        self.outputs["val"] = []
 
     def validation_step(self, batch, batch_idx):
         return self.shared_step(batch, "valid")
 
-    def validation_epoch_end(self, outputs):
-        return self.shared_epoch_end(outputs, "valid")
+    def on_validation_epoch_end(self):
+        return self.shared_epoch_end(self.outputs["valid"], "valid")
+
+    def on_test_epoch_start(self):
+        super().on_test_epoch_start()
+        self.outputs["test"] = []
 
     def test_step(self, batch, batch_idx):
         return self.shared_step(batch, "test")
 
-    def test_epoch_end(self, outputs):
-        return self.shared_epoch_end(outputs, "test")
+    def on_test_epoch_end(self):
+        return self.shared_epoch_end(self.outputs["test"], "test")
 
     # TODO: Try other optimizers and settings
     def configure_optimizers(self):
@@ -190,10 +208,9 @@ def run_train(loaders, model, config):
 
     # TODO: Go through the vast number of options
     trainer = pl.Trainer(
-        # TODO: Check if this is True
-        gpus=0,
         max_epochs=config["epochs"],
-        detect_anomaly=True,
+        accelerator="auto",
+        detect_anomaly=False,
     )
 
     train_data, val_data, _ = loaders

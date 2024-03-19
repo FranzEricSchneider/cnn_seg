@@ -6,6 +6,7 @@ import cv2
 import json
 import os
 from pathlib import Path
+import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 
@@ -19,8 +20,12 @@ TMPDIR = Path("/tmp/")
 # https://albumentations.ai/docs/examples/pytorch_semantic_segmentation/
 def build_transform(augpath):
     assert augpath.is_file()
+    def catch_cases(kwargs):
+        if "dtype" in kwargs and kwargs["dtype"] == "torch.float32":
+            kwargs["dtype"] = torch.float32
+        return kwargs
     return v2.Compose(
-        [getattr(v2, name)(**kwargs) for name, kwargs in json.load(augpath.open("r"))]
+        [getattr(v2, name)(**catch_cases(kwargs)) for name, kwargs in json.load(augpath.open("r"))]
     )
 
 
@@ -80,7 +85,8 @@ class SegmentationDataset(Dataset):
             self.transforms = v2.Compose(
                 [
                     v2.ToPILImage(),
-                    v2.ToTensor(),
+                    v2.ToImage(),
+                    v2.ToDtype(torch.float32, scale=True),
                 ]
             )
         else:

@@ -13,7 +13,14 @@
         }
     ],
     [
-        "ToTensor",
+        "ToImage",
         {}
+    ],
+    [
+        "ToDtype",
+        {
+            "dtype": "torch.float32",
+            "scale": true
+        }
     ]
 ]
