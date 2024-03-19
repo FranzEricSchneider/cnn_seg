@@ -17,6 +17,11 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
+try:
+    ANTIALIAS = Image.Resampling.LANCZOS
+except AttributeError:
+    ANTIALIAS = Image.ANTIALIAS
+
 
 def process(savedir, mpath, flag, size):
     """
@@ -46,7 +51,7 @@ def process(savedir, mpath, flag, size):
 
 
 def resize(impath, size, savepath=None):
-    resized = Image.open(impath).resize(size, Image.ANTIALIAS)
+    resized = Image.open(impath).resize(size, ANTIALIAS)
     if savepath is not None:
         resized.save(savepath)
     else:
