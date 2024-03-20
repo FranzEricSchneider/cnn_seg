@@ -16,25 +16,31 @@ def vis_image(tensor, gt_mask, pred_mask, save_path):
 
     from matplotlib import pyplot
 
-    pyplot.figure(figsize=(5, 3))
+    figure = pyplot.figure(figsize=(6, 2.5))
 
-    pyplot.subplot(1, 3, 1)
+    pyplot.subplot(1, 4, 1)
     pyplot.imshow(tensor2np(tensor).transpose(1, 2, 0))  # convert CHW -> HWC
     pyplot.title("Image")
     pyplot.axis("off")
 
-    pyplot.subplot(1, 3, 2)
+    pyplot.subplot(1, 4, 2)
     pyplot.imshow(tensor2np(gt_mask).squeeze(), vmin=0, vmax=1)
     pyplot.title("Ground truth")
     pyplot.axis("off")
 
-    pyplot.subplot(1, 3, 3)
+    pyplot.subplot(1, 4, 3)
     pyplot.imshow(tensor2np(pred_mask).squeeze(), vmin=0, vmax=1)
     pyplot.title("Prediction")
     pyplot.axis("off")
 
+    pyplot.subplot(1, 4, 4)
+    pyplot.imshow(1 - tensor2np(pred_mask).squeeze(), vmin=0, vmax=1)
+    pyplot.title("1 - Prediction")
+    pyplot.axis("off")
+
     pyplot.tight_layout()
     pyplot.savefig(save_path)
+    pyplot.close(figure)
 
 
 # Inspired by
@@ -63,6 +69,8 @@ class SegModel(pl.LightningModule):
         self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
         self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
 
+        # TODO: Try other loss options:
+        # https://smp.readthedocs.io/en/latest/losses.html
         self.loss_fn = torchseg.losses.DiceLoss(
             torchseg.losses.BINARY_MODE, from_logits=True
         )
@@ -110,7 +118,12 @@ class SegModel(pl.LightningModule):
             pred_mask.int(), mask.int(), mode="binary"
         )
 
-        if stage == "valid" and self.config["vis_val_images"]:
+        # The first time through, save a debug image
+        if (
+            stage == "val"
+            and self.config["vis_val_images"]
+            and len(self.outputs[stage]) == 0
+        ):
             vis_image(
                 tensor=image[0],
                 gt_mask=mask[0],
@@ -120,21 +133,23 @@ class SegModel(pl.LightningModule):
 
         self.outputs[stage].append(
             {
-                "loss": loss,
-                "tp": tp,
-                "fp": fp,
-                "fn": fn,
-                "tn": tn,
+                "loss": tensor2np(loss),
+                "tp": tensor2np(tp),
+                "fp": tensor2np(fp),
+                "fn": tensor2np(fn),
+                "tn": tensor2np(tn),
             }
         )
+
+        return loss
 
     def shared_epoch_end(self, outputs, stage):
 
         # aggregate step metics
-        tp = torch.cat([x["tp"] for x in outputs])
-        fp = torch.cat([x["fp"] for x in outputs])
-        fn = torch.cat([x["fn"] for x in outputs])
-        tn = torch.cat([x["tn"] for x in outputs])
+        tp = torch.cat([torch.tensor(x["tp"]) for x in outputs])
+        fp = torch.cat([torch.tensor(x["fp"]) for x in outputs])
+        fn = torch.cat([torch.tensor(x["fn"]) for x in outputs])
+        tn = torch.cat([torch.tensor(x["tn"]) for x in outputs])
 
         # Per image IoU means that we first calculate IoU score for each image
         # and then compute mean over these scores
@@ -184,10 +199,10 @@ class SegModel(pl.LightningModule):
         self.outputs["val"] = []
 
     def validation_step(self, batch, batch_idx):
-        return self.shared_step(batch, "valid")
+        return self.shared_step(batch, "val")
 
     def on_validation_epoch_end(self):
-        return self.shared_epoch_end(self.outputs["valid"], "valid")
+        return self.shared_epoch_end(self.outputs["val"], "val")
 
     def on_test_epoch_start(self):
         super().on_test_epoch_start()

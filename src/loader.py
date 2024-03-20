@@ -4,11 +4,13 @@ Dataloader and related tools
 
 import cv2
 import json
+import numpy
 import os
 from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
+import wandb
 
 from utils import tensor2np
 
@@ -57,7 +59,7 @@ def get_loaders(config):
         )
 
         if config["wandb"]:
-            wandb.save(augpath)
+            wandb.save(str(augpath))
             path = Path(TMPDIR).joinpath(f"{subdir}_files.json")
             json.dump(
                 sorted(
@@ -104,11 +106,9 @@ class SegmentationDataset(Dataset):
         image = cv2.cvtColor(cv2.imread(str(self.impaths[idx])), cv2.COLOR_BGR2RGB)
         mask = (numpy.load(self.maskpaths[idx]) * 255).astype(numpy.uint8)
 
-        # Check to see if we are applying anything to both image and its mask
-        image = self.transforms(image)
         # TODO: We're going to need to split space-based transformations that
         # should apply to both, and color-based transformations which shouldn't
-        mask = self.transforms(mask)
+        image, mask = self.transforms(image, mask)
 
         # Return a tuple of the image and its mask
         return (image, mask)
