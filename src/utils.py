@@ -15,8 +15,11 @@ def key_string(key):
     return key
 
 
-def login_wandb(config):
+def tensor2np(tensor):
+    return tensor.detach().cpu().numpy()
 
+
+def login_wandb(config):
     keyfile = Path(config["keyfile"])
     assert (
         keyfile.is_file()
@@ -24,12 +27,7 @@ def login_wandb(config):
     wandb.login(key=json.load(keyfile.open("r"))["key"])
 
 
-def tensor2np(tensor):
-    return tensor.detach().cpu().numpy()
-
-
 def wandb_run(config):
-
     name = "-".join(
         [
             f"{key_string(key)}:{config[key]}"
@@ -38,7 +36,6 @@ def wandb_run(config):
             for key in config["wandb_print"]
         ]
     )
-
     run = wandb.init(
         # Wandb creates random run names if you skip this field
         name=name,
@@ -70,9 +67,9 @@ def load_config():
     parser.add_argument("--encoder", default=None)
     parser.add_argument("-b", "--batch-size", type=int, default=None)
     parser.add_argument("-e", "--epochs", type=int, default=None)
-    # parser.add_argument("-l", "--lr", type=float, default=None)
-    # parser.add_argument("-w", "--wd", type=float, default=None)
-    # parser.add_argument("-g", "--train-augmentation-path", default=None)
+    parser.add_argument("-l", "--lr", type=float, default=None)
+    parser.add_argument("-w", "--wd", type=float, default=None)
+    parser.add_argument("-g", "--train-augmentation-path", default=None)
     args = parser.parse_args()
 
     # Blindly fill arguments into the config

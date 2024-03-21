@@ -22,12 +22,17 @@ TMPDIR = Path("/tmp/")
 # https://albumentations.ai/docs/examples/pytorch_semantic_segmentation/
 def build_transform(augpath):
     assert augpath.is_file()
+
     def catch_cases(kwargs):
         if "dtype" in kwargs and kwargs["dtype"] == "torch.float32":
             kwargs["dtype"] = torch.float32
         return kwargs
+
     return v2.Compose(
-        [getattr(v2, name)(**catch_cases(kwargs)) for name, kwargs in json.load(augpath.open("r"))]
+        [
+            getattr(v2, name)(**catch_cases(kwargs))
+            for name, kwargs in json.load(augpath.open("r"))
+        ]
     )
 
 
@@ -42,7 +47,6 @@ def get_loaders(config):
         imdir = config["data_dir"] / subdir / "images"
         maskdir = config["data_dir"] / subdir / "masks"
 
-        # TODO: Add and troubleshoot transforms
         dataset = SegmentationDataset(
             sorted(imdir.glob("*.jpg")),
             sorted(maskdir.glob("*.npy")),
@@ -59,7 +63,9 @@ def get_loaders(config):
         )
 
         if config["wandb"]:
+            # Save our augmentation file
             wandb.save(str(augpath))
+            # Save a list of all of the files for this stage (e.g. train/test)
             path = Path(TMPDIR).joinpath(f"{subdir}_files.json")
             json.dump(
                 sorted(
@@ -80,21 +86,33 @@ def get_loaders(config):
 # https://pyimagesearch.com/2021/11/08/u-net-training-image-segmentation-models-in-pytorch/
 class SegmentationDataset(Dataset):
     def __init__(self, impaths, maskpaths, transforms):
-        # NOTE: when iterated through, impaths and maskpaths must correspond
+        """
+        Arguments:
+            impaths: list of Path objects for images openable with cv2.imread
+            maskpaths: list of Path objects for masks (.npy boolean arrays,
+                openable with numpy.load)
+            transforms: None (default transforms will be used) or a v2.Compose
+                object with sequenced augmentations
+
+        NOTE: when iterated through, impaths and maskpaths must correspond
+        """
         self.impaths = impaths
         self.maskpaths = maskpaths
+        assert len(impaths) == len(maskpaths)
+
         if transforms is None:
-            self.transforms = v2.Compose(
-                [
-                    v2.ToPILImage(),
+            tlist = [v2.ToPILImage()]
+            try:
+                tlist += [
                     v2.ToImage(),
                     v2.ToDtype(torch.float32, scale=True),
                 ]
-            )
+            except AttributeError:
+                # Handle older torchvision
+                tlist += [v2.ToTensor()]
+            self.transforms = v2.Compose(tlist)
         else:
             self.transforms = transforms
-
-        assert len(impaths) == len(maskpaths)
 
     def __len__(self):
         return len(self.impaths)
@@ -121,7 +139,7 @@ if __name__ == "__main__":
     from pathlib import Path
 
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description="Visualize a random image/mask from the rootdir",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -136,7 +154,7 @@ if __name__ == "__main__":
 
     dataset = SegmentationDataset(
         sorted(imdir.glob("*jpg")),
-        sorted(maskdir.glob("*png")),
+        sorted(maskdir.glob("*npy")),
         transforms=None,
     )
     dataloader = DataLoader(

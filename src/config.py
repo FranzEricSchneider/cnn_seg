@@ -6,7 +6,7 @@ CONFIG = {
 
     "train": True,
 
-    "wandb": False,
+    "wandb": True,
     "wandb_print": [
         "architecture",
         "encoder",
@@ -29,7 +29,7 @@ CONFIG = {
     # "config_paths": None,
 
     "lr": 1e-4,
-    # "scheduler": "OneCycleLR",
+    "scheduler": "constant",
     # "StepLR_kwargs": {"step_size": 5, "gamma": 0.2},
     # "LRTest_kwargs": {"min_per_epoch": 0.05, "runtime_min": 6, "start": 1e-6, "end": 1.0},
     # "OneCycleLR_kwargs": {"max_lr": 5e-3, "min_lr": 5e-5},
@@ -54,5 +54,7 @@ CONFIG = {
     "batch_size": 6,
 
     "epochs": 24,
-    # "wd": 0.01,
+    "wd": 0.01,
+    "eval_report_iter": 1,
+
 }

@@ -16,7 +16,7 @@ def vis_image(tensor, gt_mask, pred_mask, save_path):
 
     from matplotlib import pyplot
 
-    figure = pyplot.figure(figsize=(6, 2.5))
+    figure = pyplot.figure(figsize=(5, 2.5))
 
     pyplot.subplot(1, 4, 1)
     pyplot.imshow(tensor2np(tensor).transpose(1, 2, 0))  # convert CHW -> HWC
@@ -33,11 +33,6 @@ def vis_image(tensor, gt_mask, pred_mask, save_path):
     pyplot.title("Prediction")
     pyplot.axis("off")
 
-    pyplot.subplot(1, 4, 4)
-    pyplot.imshow(1 - tensor2np(pred_mask).squeeze(), vmin=0, vmax=1)
-    pyplot.title("1 - Prediction")
-    pyplot.axis("off")
-
     pyplot.tight_layout()
     pyplot.savefig(save_path)
     pyplot.close(figure)
@@ -46,7 +41,7 @@ def vis_image(tensor, gt_mask, pred_mask, save_path):
 # Inspired by
 # https://colab.research.google.com/github/qubvel/segmentation_models.pytorch/blob/master/examples/binary_segmentation_intro.ipynb
 class SegModel(pl.LightningModule):
-    def __init__(self, config, run=None, **kwargs):
+    def __init__(self, config, device, run=None, **kwargs):
 
         # All of the necessary arguments as a dictionary
         self.config = config
@@ -63,11 +58,12 @@ class SegModel(pl.LightningModule):
             classes=1,
             **kwargs,
         )
+        self.model.to(device)
 
         # preprocessing parameters based on the encoder
         params = smp.encoders.get_preprocessing_params(self.config["encoder"])
-        self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
-        self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1).to(device))
+        self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1).to(device))
 
         # TODO: Try other loss options:
         # https://smp.readthedocs.io/en/latest/losses.html
@@ -84,23 +80,17 @@ class SegModel(pl.LightningModule):
         mask = self.model(image)
         return mask
 
-    def shared_step(self, batch, stage):
-
-        image = batch[0]
+    def shared_step(self, image, mask, stage):
 
         # Shape of the image should be BCHW
         assert image.ndim == 4
-
         # Check that image dimensions are divisible by 32
         h, w = image.shape[2:]
         assert h % 32 == 0 and w % 32 == 0
 
-        mask = batch[1]
-
         # Shape of the mask should be BCHW, for binary C=1 (weird)
         assert mask.ndim == 4
         assert mask.shape[1] == 1
-
         # Check that mask values in between 0 and 1, NOT 0 and 255 for binary segmentation
         assert mask.max() <= 1.0 and mask.min() >= 0
 
