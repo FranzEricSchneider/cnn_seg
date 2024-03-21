@@ -10,7 +10,7 @@ from scheduler import get_scheduler
 def get_tools(loader, model, config):
 
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=config["lr"], weight_decay=config["wd"]
+        model.model.parameters(), lr=config["lr"], weight_decay=config["wd"]
     )
 
     scheduler = get_scheduler(config, optimizer, loader)
@@ -18,7 +18,7 @@ def get_tools(loader, model, config):
     return (optimizer, scheduler)
 
 
-def train_step(
+def train_epoch(
     loader,
     model,
     optimizer,
@@ -30,14 +30,14 @@ def train_step(
     # train_augmentation_path=None,
 ):
 
-    model.train()
+    model.model.train()
     batch_bar = tqdm(
         total=len(loader), dynamic_ncols=True, leave=False, position=0, desc="Train"
     )
     train_loss = 0
     # result = {"impaths": [], "losses": [], "outputs": []}
 
-    # Reset this place to save evaluation outputs
+    # Reset this place to save evaluation stats
     model.outputs["train"] = []
 
     for i, (x, y) in enumerate(loader):
@@ -57,7 +57,7 @@ def train_step(
 
         x = x.to(device)
         y = y.to(device)
-        loss = model.shared_step(x, y, "train")
+        loss = model.process_batch(x, y, "train")
 
         # # Do some bookkeeping, save these for later use
         # result["impaths"].extend(paths)
@@ -84,21 +84,22 @@ def train_step(
 
     batch_bar.close()
 
+    # Report the epoch results to wandb
+    model.record_epoch_end("train")
+
     # Return the average loss over all batches
     train_loss /= len(loader)
-
     print(
         f"{str(datetime.datetime.now())}"
         f"    Avg Train Loss: {train_loss:.4f}"
         f"    LR: {float(optimizer.param_groups[0]['lr']):.1E}"
     )
-
     return train_loss
 
 
 def evaluate(loader, model, device):
 
-    model.eval()
+    model.model.eval()
 
     val_loss = 0
     batch_bar = tqdm(
@@ -120,7 +121,7 @@ def evaluate(loader, model, device):
             #     embeddings = modeldict["embeddings"]
             # else:
             #     modeldict = model(x, w_vec_embedding=True)
-            loss = model.shared_step(x, y, "val")
+            loss = model.process_batch(x, y, "val")
 
         val_loss += float(loss.detach().cpu())
         batch_bar.set_postfix(avg_loss=f"{val_loss/(i+1):.4f}")
@@ -141,9 +142,11 @@ def evaluate(loader, model, device):
 
     batch_bar.close()
 
+    # Report the epoch results to wandb
+    model.record_epoch_end("val")
+
     # Get the average val_loss across the epoch
     val_loss /= len(loader)
-
     return val_loss
 
 
@@ -180,7 +183,7 @@ def run_train(loaders, model, config, device, run, debug=False):
     for epoch in range(config["epochs"]):
         print("Epoch", epoch + 1)
 
-        train_loss = train_step(**step_kwargs)
+        train_loss = train_epoch(**step_kwargs)
         if config["scheduler"] == "StepLR":
             scheduler.step()
         # losses["train"].append(train_loss)

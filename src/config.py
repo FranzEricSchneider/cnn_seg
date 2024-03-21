@@ -6,7 +6,7 @@ CONFIG = {
 
     "train": True,
 
-    "wandb": True,
+    "wandb": False,
     "wandb_print": [
         "architecture",
         "encoder",

@@ -5,7 +5,6 @@ import time
 import torch
 import wandb
 
-import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
 import torchseg
 
@@ -38,9 +37,7 @@ def vis_image(tensor, gt_mask, pred_mask, save_path):
     pyplot.close(figure)
 
 
-# Inspired by
-# https://colab.research.google.com/github/qubvel/segmentation_models.pytorch/blob/master/examples/binary_segmentation_intro.ipynb
-class SegModel(pl.LightningModule):
+class SegModel:
     def __init__(self, config, device, run=None, **kwargs):
 
         # All of the necessary arguments as a dictionary
@@ -48,22 +45,19 @@ class SegModel(pl.LightningModule):
         # Either None or a wandb run that can be used to track stats
         self.run = run
 
-        super().__init__()
         self.model = torchseg.create_model(
             self.config["architecture"],
             encoder_name=self.config["encoder"],
             in_channels=3,
-            # I don't think it counts the background as a class, which is
-            # weird but whatever
             classes=1,
             **kwargs,
         )
         self.model.to(device)
 
-        # preprocessing parameters based on the encoder
+        # Preprocessing parameters based on the encoder
         params = smp.encoders.get_preprocessing_params(self.config["encoder"])
-        self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1).to(device))
-        self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1).to(device))
+        self.std = torch.tensor(params["std"]).view(1, 3, 1, 1).to(device)
+        self.mean = torch.tensor(params["mean"]).view(1, 3, 1, 1).to(device)
 
         # TODO: Try other loss options:
         # https://smp.readthedocs.io/en/latest/losses.html
@@ -75,12 +69,27 @@ class SegModel(pl.LightningModule):
         self.outputs = {"train": [], "val": [], "test": []}
 
     def forward(self, image):
-        # normalize image here
+        # Normalize image
         image = (image - self.mean) / self.std
+        # Run image through the model
         mask = self.model(image)
         return mask
 
-    def shared_step(self, image, mask, stage):
+    def process_batch(self, image, mask, stage):
+        """
+        Arguments:
+            image: batch of images that have already been transformed
+                (tensor, shape BCHW)
+            mask: batch of masks that have already been transformed
+                (tensor, shape BCHW) where the channel value is 1
+            stage: string specifying train/val/test. So far is used for
+                optional validation in the "val" stage, and also records output
+                stats by stage. It's up to the code that calls this function to
+                clear self.outputs between batches
+
+        returns: loss (defined by self.loss_fn()) as a tensor, such that
+            loss.backward() works if desired
+        """
 
         # Shape of the image should be BCHW
         assert image.ndim == 4
@@ -102,12 +111,6 @@ class SegModel(pl.LightningModule):
 
         # Convert mask values to probabilities, then apply thresholding
         pred_mask = (logits_mask.sigmoid() > 0.5).float()
-
-        # Compute TN/FP/TP/FN pixels for each image
-        tp, fp, fn, tn = smp.metrics.get_stats(
-            pred_mask.int(), mask.int(), mode="binary"
-        )
-
         # The first time through, save a debug image
         if (
             stage == "val"
@@ -121,109 +124,51 @@ class SegModel(pl.LightningModule):
                 save_path=f"/tmp/val_vis_{int(time.time() * 1e6)}.jpg",
             )
 
+        # Compute TN/FP/TP/FN pixels as reporting stats for each image
+        tp, fp, fn, tn = smp.metrics.get_stats(
+            pred_mask.int(), mask.int(), mode="binary"
+        )
+        # It's important to cost loss to numpy to avoid a huge GPU load
+        # building up over time, since loss is connected to all other GPU
+        # computations
         self.outputs[stage].append(
-            {
-                "loss": tensor2np(loss),
-                "tp": tensor2np(tp),
-                "fp": tensor2np(fp),
-                "fn": tensor2np(fn),
-                "tn": tensor2np(tn),
-            }
+            {"loss": tensor2np(loss), "tp": tp, "fp": fp, "fn": fn, "tn": tn}
         )
 
         return loss
 
-    def shared_epoch_end(self, outputs, stage):
+    def record_epoch_end(self, stage):
 
-        # aggregate step metics
-        tp = torch.cat([torch.tensor(x["tp"]) for x in outputs])
-        fp = torch.cat([torch.tensor(x["fp"]) for x in outputs])
-        fn = torch.cat([torch.tensor(x["fn"]) for x in outputs])
-        tn = torch.cat([torch.tensor(x["tn"]) for x in outputs])
+        # For now if there is no wandb run active just end. In the future we
+        # might add some non-wandb reporting above this
+        if self.run is None:
+            return
 
-        # Per image IoU means that we first calculate IoU score for each image
-        # and then compute mean over these scores
-        per_image_iou = smp.metrics.iou_score(
+        # Aggregate batch step metics
+        tp, fp, fn, tn = [
+            torch.cat([x[key] for x in self.outputs[stage]])
+            for key in ["tp", "fp", "fn", "tn"]
+        ]
+        # Calculate IoU score for each image and then compute the mean
+        mean_image_iou = smp.metrics.iou_score(
             tp, fp, fn, tn, reduction="micro-imagewise"
         )
-
-        # dataset IoU means that we aggregate intersection and union over whole dataset
-        # and then compute IoU score. The difference between dataset_iou and per_image_iou scores
-        # in this particular case will not be much, however for dataset
-        # with "empty" images (images without target class) a large gap could be observed.
-        # Empty images influence a lot on per_image_iou and much less on dataset_iou.
+        # Aggregate mask intersection over whole dataset and then compute IoU.
+        # For datasets with "empty" images (no target class) a large gap could
+        # be observed. Empty images influence dataset_iou much less.
         dataset_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
 
-        if self.run is not None:
-            wandb.log(
-                {
-                    f"{stage}_loss": numpy.mean([x["loss"] for x in outputs]),
-                    f"{stage}_tp": tensor2np(tp).mean(),
-                    f"{stage}_tn": tensor2np(tn).mean(),
-                    f"{stage}_fp": tensor2np(fp).mean(),
-                    f"{stage}_fn": tensor2np(fn).mean(),
-                    f"{stage}_per_im_iou": per_image_iou,
-                    f"{stage}_dataset_iou": dataset_iou,
-                }
-            )
-
-        metrics = {
-            f"{stage}_per_image_iou": per_image_iou,
-            f"{stage}_dataset_iou": dataset_iou,
-        }
-
-        self.log_dict(metrics, prog_bar=True)
-
-    def on_training_epoch_start(self):
-        super().on_training_epoch_start()
-        self.outputs["train"] = []
-
-    def training_step(self, batch, batch_idx):
-        return self.shared_step(batch, "train")
-
-    def on_training_epoch_end(self):
-        return self.shared_epoch_end(self.outputs["train"], "train")
-
-    def on_validation_epoch_start(self):
-        super().on_validation_epoch_start()
-        self.outputs["val"] = []
-
-    def validation_step(self, batch, batch_idx):
-        return self.shared_step(batch, "val")
-
-    def on_validation_epoch_end(self):
-        return self.shared_epoch_end(self.outputs["val"], "val")
-
-    def on_test_epoch_start(self):
-        super().on_test_epoch_start()
-        self.outputs["test"] = []
-
-    def test_step(self, batch, batch_idx):
-        return self.shared_step(batch, "test")
-
-    def on_test_epoch_end(self):
-        return self.shared_epoch_end(self.outputs["test"], "test")
-
-    # TODO: Try other optimizers and settings
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.config["lr"])
-
-
-def run_train(loaders, model, config):
-
-    # TODO: Go through the vast number of options
-    trainer = pl.Trainer(
-        max_epochs=config["epochs"],
-        accelerator="auto",
-        detect_anomaly=False,
-    )
-
-    train_data, val_data, _ = loaders
-    trainer.fit(
-        model,
-        train_dataloaders=train_data,
-        val_dataloaders=val_data,
-    )
+        wandb.log(
+            {
+                f"{stage}_loss": numpy.mean([x["loss"] for x in outputs]),
+                f"{stage}_tp": tensor2np(tp).mean(),
+                f"{stage}_tn": tensor2np(tn).mean(),
+                f"{stage}_fp": tensor2np(fp).mean(),
+                f"{stage}_fn": tensor2np(fn).mean(),
+                f"{stage}_per_im_iou": mean_image_iou,
+                f"{stage}_dataset_iou": dataset_iou,
+            }
+        )
 
 
 if __name__ == "__main__":
@@ -232,13 +177,20 @@ if __name__ == "__main__":
     from pathlib import Path
 
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description="Run a really basic validation model through the first"
+        " part of a dataloader",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "rootdir",
         help="Path to images/ and masks/ root dir for visualization",
         type=Path,
+    )
+    parser.add_argument(
+        "--count",
+        help="Number of batches to process",
+        type=int,
+        default=3,
     )
     args = parser.parse_args()
 
@@ -249,7 +201,7 @@ if __name__ == "__main__":
 
     dataset = SegmentationDataset(
         sorted(imdir.glob("*jpg")),
-        sorted(maskdir.glob("*png")),
+        sorted(maskdir.glob("*npy")),
         transforms=None,
     )
 
@@ -263,8 +215,20 @@ if __name__ == "__main__":
         num_workers=1,
     )
 
-    model = SegModel({"architecture": "FPN", "encoder": "resnet18", "lr": 1e-3})
-    # TODO: Look at other arguments
-    # TODO: Look into learning rate schedulers
-    trainer = pl.Trainer(gpus=0, max_epochs=5)
-    trainer.fit(model, train_dataloaders=dataloader)
+    model = SegModel(
+        config={
+            "architecture": "FPN",
+            "encoder": "resnet18",
+            "lr": 1e-3,
+            "vis_val_images": True,
+        },
+        device="cpu",
+    )
+    model.model.eval()
+
+    for i, (image, mask) in enumerate(dataloader):
+        if i == args.count:
+            break
+        print(f"Batch {i + 1} / {args.count}")
+        model.process_batch(image, mask, "val")
+    print("Check for viz images in /tmp/, model output will be nonsense")
