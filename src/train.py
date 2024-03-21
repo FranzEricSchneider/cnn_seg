@@ -105,7 +105,7 @@ def train_epoch(
     batch_bar.close()
 
     # Report the epoch results to wandb
-    model.record_epoch_end("train")
+    model.record_epoch_end("train", lr=float(optimizer.param_groups[0]['lr']))
 
     # Return the average loss over all batches
     avg_loss = total_loss / len(loader)
@@ -189,10 +189,6 @@ def run_train(loaders, model, config, device, run, debug=False):
 
         # Do the training epoch
         avg_train_loss = train_epoch(**step_kwargs)
-        log_values = {
-            "avg_train_loss": avg_train_loss,
-            "lr": float(optimizer.param_groups[0]["lr"]),
-        }
 
         # Handle a specific scheduler
         if config["scheduler"] == "StepLR":
@@ -204,13 +200,8 @@ def run_train(loaders, model, config, device, run, debug=False):
             print(
                 f"{str(datetime.datetime.now())}    Validation Loss: {avg_val_loss:.4f}"
             )
-            log_values.update({"avg_val_loss": avg_val_loss})
             if config["scheduler"] == "ReduceLROnPlateau":
                 scheduler.step(avg_val_loss)
-
-        # Report
-        if config["wandb"]:
-            wandb.log(log_values)
 
         # Save the best current model
         if avg_val_loss < best_val_loss:

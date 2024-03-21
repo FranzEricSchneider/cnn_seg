@@ -17,17 +17,17 @@ def vis_image(tensor, gt_mask, pred_mask, save_path):
 
     figure = pyplot.figure(figsize=(5, 2.5))
 
-    pyplot.subplot(1, 4, 1)
+    pyplot.subplot(1, 3, 1)
     pyplot.imshow(tensor2np(tensor).transpose(1, 2, 0))  # convert CHW -> HWC
     pyplot.title("Image")
     pyplot.axis("off")
 
-    pyplot.subplot(1, 4, 2)
+    pyplot.subplot(1, 3, 2)
     pyplot.imshow(tensor2np(gt_mask).squeeze(), vmin=0, vmax=1)
     pyplot.title("Ground truth")
     pyplot.axis("off")
 
-    pyplot.subplot(1, 4, 3)
+    pyplot.subplot(1, 3, 3)
     pyplot.imshow(tensor2np(pred_mask).squeeze(), vmin=0, vmax=1)
     pyplot.title("Prediction")
     pyplot.axis("off")
@@ -137,7 +137,7 @@ class SegModel:
 
         return loss
 
-    def record_epoch_end(self, stage):
+    def record_epoch_end(self, stage, lr=None):
 
         # For now if there is no wandb run active just end. In the future we
         # might add some non-wandb reporting above this
@@ -158,17 +158,18 @@ class SegModel:
         # be observed. Empty images influence dataset_iou much less.
         dataset_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
 
-        wandb.log(
-            {
-                f"{stage}_loss": numpy.mean([x["loss"] for x in outputs]),
-                f"{stage}_tp": tensor2np(tp).mean(),
-                f"{stage}_tn": tensor2np(tn).mean(),
-                f"{stage}_fp": tensor2np(fp).mean(),
-                f"{stage}_fn": tensor2np(fn).mean(),
-                f"{stage}_per_im_iou": mean_image_iou,
-                f"{stage}_dataset_iou": dataset_iou,
-            }
-        )
+        log_values = {
+            f"{stage}_loss": numpy.mean([x["loss"] for x in self.outputs[stage]]),
+            f"{stage}_tp": tensor2np(tp).mean(),
+            f"{stage}_tn": tensor2np(tn).mean(),
+            f"{stage}_fp": tensor2np(fp).mean(),
+            f"{stage}_fn": tensor2np(fn).mean(),
+            f"{stage}_per_im_iou": mean_image_iou,
+            f"{stage}_dataset_iou": dataset_iou,
+        }
+        if lr is not Nonw:
+            log_values.update({"lr": lr})
+        wandb.log(log_values)
 
 
 if __name__ == "__main__":
