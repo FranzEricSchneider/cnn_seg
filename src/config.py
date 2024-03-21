@@ -39,6 +39,10 @@ CONFIG = {
     # # patience: number of epochs with no improvement after which LR is reduced
     # "ReduceLROnPlateau_kwargs": {"mode": "min", "patience": 2, "factor": 0.5, "min_lr": 6e-6},
 
+    # When doing an LRTest, what frequency do you want to report from the
+    # batches? A tri of 1 will report every batch
+    "train_report_iter": 1,
+
     # Augmentations are stored in a json file as (name, kwargs). They are
     # applied in the loader phase. The way to experiment with augmentations is
     # to make a copy of the file, set those that you want, and then select the

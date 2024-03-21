@@ -70,4 +70,10 @@ def get_scheduler(config, optimizer, loader):
     else:
         raise NotImplementedError()
 
+    # Make some assertions
+    if config["scheduler"] == "ReduceLROnPlateau":
+        assert (
+            config["eval_report_iter"] == 1
+        ), "ReduceLROnPlateau requires eval_report_iter == 1"
+
     return scheduler

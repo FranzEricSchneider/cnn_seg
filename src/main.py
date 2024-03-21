@@ -16,7 +16,7 @@ def main():
     loaders = get_loaders(config)
     model = SegModel(config, device, run)
     if config["train"]:
-        run_train(loaders, model, config, device, run)
+        run_train(loaders, model, config, device, run, debug=False)
     else:
         save_inference(models, loaders, ("train", "val", "test"), config)
 

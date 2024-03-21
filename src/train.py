@@ -5,17 +5,29 @@ from tqdm import tqdm
 import wandb
 
 from scheduler import get_scheduler
+from utils import tensor2np
 
 
 def get_tools(loader, model, config):
-
     optimizer = torch.optim.AdamW(
         model.model.parameters(), lr=config["lr"], weight_decay=config["wd"]
     )
-
     scheduler = get_scheduler(config, optimizer, loader)
-
     return (optimizer, scheduler)
+
+
+def sanity_check(loader, model, device):
+    model.model.eval()
+    print("Sanity check:")
+    for i, (images, masks) in enumerate(loader):
+        print("\timages.shape", images.shape)
+        print("\tmasks.shape", masks.shape)
+        images = images.to(device)
+        masks = masks.to(device)
+        with torch.inference_mode():
+            loss = model.process_batch(images, masks, "val")
+        print(f"\tLoss: {loss}")
+        break
 
 
 def train_epoch(
@@ -30,56 +42,64 @@ def train_epoch(
     # train_augmentation_path=None,
 ):
 
-    model.model.train()
+    # Track the average loss in a tqdm progress bar
+    total_loss = 0
     batch_bar = tqdm(
         total=len(loader), dynamic_ncols=True, leave=False, position=0, desc="Train"
     )
-    train_loss = 0
-    # result = {"impaths": [], "losses": [], "outputs": []}
 
     # Reset this place to save evaluation stats
     model.outputs["train"] = []
 
-    for i, (x, y) in enumerate(loader):
+    # Set model into training mode
+    model.model.train()
 
-        # if log_training_images:
-        #     debug_impaths = save_debug_images(
-        #         paths,
-        #         Path("/tmp/"),
-        #         from_torch=x,
-        #         prefix=f"imgvis_{Path(train_augmentation_path).stem}_",
-        #     )
-        #     print(f"Saved debug images: {debug_impaths}")
+    for i, (images, masks) in enumerate(loader):
 
         # Zero gradients (necessary to call explicitly in case you have split
         # training up across multiple devices)
         optimizer.zero_grad()
 
-        x = x.to(device)
-        y = y.to(device)
-        loss = model.process_batch(x, y, "train")
+        # if log_training_images:
+        #     debug_impaths = save_debug_images(
+        #         paths,
+        #         Path("/tmp/"),
+        #         from_torch=images,
+        #         prefix=f"imgvis_{Path(train_augmentation_path).stem}_",
+        #     )
+        #     print(f"Saved debug images: {debug_impaths}")
 
-        # # Do some bookkeeping, save these for later use
-        # result["impaths"].extend(paths)
-        # result["outputs"].extend([float(o) for o in out.detach().cpu()])
+        # Run the batch through the model
+        images = images.to(device)
+        masks = masks.to(device)
+        loss = model.process_batch(images, masks, "train")
 
+        # Apply the gradients, update the optimizer
         loss.backward()
         optimizer.step()
 
-        train_loss += float(loss.detach().cpu())
+        # Track the average loss in the tqdm progress bar
+        total_loss += float(tensor2np(loss))
         batch_bar.set_postfix(
-            loss=f"{train_loss/(i+1):.4f}", lr=f"{optimizer.param_groups[0]['lr']}"
+            loss=f"{total_loss/(i+1):.4f}", lr=f"{optimizer.param_groups[0]['lr']}"
         )
         batch_bar.update()
 
-        # if log_loss and config["wandb"]:
-        #     if i % config["train_report_iter"] == 0:
-        #         wandb.log({"batch-loss": loss.item()})
-        #         wandb.log({"batch-lr": float(scheduler.get_last_lr()[0])})
+        # In specific scheduler circumstances (LRTest, basically) track loss
+        # and LR much more closely
+        if log_loss and config["wandb"] and (i % config["train_report_iter"] == 0):
+            wandb.log(
+                {
+                    "batch-loss": loss.item(),
+                    "batch-lr": float(scheduler.get_last_lr()[0]),
+                }
+            )
+
+        # For some schedulers, we want to step every training batch
         if scheduler is not None:
             scheduler.step()
 
-        del x, y, loss
+        del images, masks, loss
         torch.cuda.empty_cache()
 
     batch_bar.close()
@@ -88,56 +108,43 @@ def train_epoch(
     model.record_epoch_end("train")
 
     # Return the average loss over all batches
-    train_loss /= len(loader)
+    avg_loss = total_loss / len(loader)
     print(
         f"{str(datetime.datetime.now())}"
-        f"    Avg Train Loss: {train_loss:.4f}"
+        f"    Avg Train Loss: {avg_loss:.4f}"
         f"    LR: {float(optimizer.param_groups[0]['lr']):.1E}"
     )
-    return train_loss
+    return avg_loss
 
 
 def evaluate(loader, model, device):
 
-    model.model.eval()
-
-    val_loss = 0
+    # Track the average loss in a tqdm progress bar
+    total_loss = 0
     batch_bar = tqdm(
         total=len(loader), dynamic_ncols=True, leave=False, position=0, desc="Val"
     )
 
-    # result = {"impaths": [], "losses": [], "outputs": [], "vectors": []}
-
     # Reset this place to save evaluation outputs
     model.outputs["val"] = []
 
-    for i, (x, y) in enumerate(loader):
-        x = x.to(device)
-        y = y.to(device)
-        with torch.inference_mode():
-            # # Sample the embeddings the first batch
-            # if i == 0:
-            #     modeldict = model(x, w_vec_embedding=True, w_im_embedding=True)
-            #     embeddings = modeldict["embeddings"]
-            # else:
-            #     modeldict = model(x, w_vec_embedding=True)
-            loss = model.process_batch(x, y, "val")
+    # Set model into training mode
+    model.model.eval()
 
-        val_loss += float(loss.detach().cpu())
-        batch_bar.set_postfix(avg_loss=f"{val_loss/(i+1):.4f}")
+    for i, (images, masks) in enumerate(loader):
+
+        # Run the batch through the model
+        images = images.to(device)
+        masks = masks.to(device)
+        with torch.inference_mode():
+            loss = model.process_batch(images, masks, "val")
+
+        # Track the average loss in a tqdm progress bar
+        total_loss += float(tensor2np(loss))
+        batch_bar.set_postfix(avg_loss=f"{total_loss/(i+1):.4f}")
         batch_bar.update()
 
-        # # Do some bookkeeping, save these for later use
-        # result["impaths"].extend(paths)
-        # result["outputs"].extend(
-        #     [float(o) for o in modeldict["outputs"].detach().cpu()]
-        # )
-        # result["losses"].extend([float(pil) for pil in per_input_loss.detach().cpu()])
-        # result["vectors"].extend(
-        #     [v.tolist() for v in modeldict["vectors"].detach().cpu()]
-        # )
-
-        del x, y, loss
+        del images, masks, loss
         torch.cuda.empty_cache()
 
     batch_bar.close()
@@ -145,9 +152,9 @@ def evaluate(loader, model, device):
     # Report the epoch results to wandb
     model.record_epoch_end("val")
 
-    # Get the average val_loss across the epoch
-    val_loss /= len(loader)
-    return val_loss
+    # Get the average total_loss across the epoch
+    total_loss /= len(loader)
+    return total_loss
 
 
 def run_train(loaders, model, config, device, run, debug=False):
@@ -167,60 +174,59 @@ def run_train(loaders, model, config, device, run, debug=False):
         "device": device,
         # "train_augmentation_path": config["train_augmentation_path"],
     }
-    if config["scheduler"] in ["constant", "CosMulti", "LRTest", "OneCycleLR"]:
+    if config["scheduler"] in ["CosMulti", "LRTest", "OneCycleLR"]:
         step_kwargs["scheduler"] = scheduler
         if config["scheduler"] == "LRTest":
             step_kwargs["log_loss"] = True
 
-    # if debug:
-    #     sanity_check(train_loader, model, device)
+    if debug:
+        sanity_check(val_loader, model, device)
 
     best_val_loss = 1e6
-
-    # losses = {"train": [], "val": []}
-    sampled_paths = {}
 
     for epoch in range(config["epochs"]):
         print("Epoch", epoch + 1)
 
-        train_loss = train_epoch(**step_kwargs)
-        if config["scheduler"] == "StepLR":
-            scheduler.step()
-        # losses["train"].append(train_loss)
-
+        # Do the training epoch
+        avg_train_loss = train_epoch(**step_kwargs)
         log_values = {
-            "train_loss": train_loss,
+            "avg_train_loss": avg_train_loss,
             "lr": float(optimizer.param_groups[0]["lr"]),
         }
-        if (
-            epoch % config["eval_report_iter"] == 0
-            or epoch == config["epochs"] - 1
-            or config["scheduler"] == "ReduceLROnPlateau"
-        ):
-            val_loss = evaluate(val_loader, model, device)
-            print(f"{str(datetime.datetime.now())}    Validation Loss: {val_loss:.4f}")
-            log_values.update({"val_loss": val_loss})
-            # losses["val"].append(val_loss)
-            if config["scheduler"] == "ReduceLROnPlateau":
-                scheduler.step(val_loss)
 
+        # Handle a specific scheduler
+        if config["scheduler"] == "StepLR":
+            scheduler.step()
+
+        # Do the validation epoch if conditions are right
+        if epoch % config["eval_report_iter"] == 0 or epoch == config["epochs"] - 1:
+            avg_val_loss = evaluate(val_loader, model, device)
+            print(
+                f"{str(datetime.datetime.now())}    Validation Loss: {avg_val_loss:.4f}"
+            )
+            log_values.update({"avg_val_loss": avg_val_loss})
+            if config["scheduler"] == "ReduceLROnPlateau":
+                scheduler.step(avg_val_loss)
+
+        # Report
         if config["wandb"]:
             wandb.log(log_values)
 
-        if val_loss < best_val_loss:
-            print("NOT saving model")
+        # Save the best current model
+        if avg_val_loss < best_val_loss:
+            print("I should be saving a model but I am not! TODO")
             # torch.save(
             #     {
             #         "model_state_dict": model.state_dict(),
             #         "optimizer_state_dict": optimizer.state_dict(),
-            #         "val_loss": val_loss,
+            #         "avg_val_loss": avg_val_loss,
             #         "epoch": epoch,
             #     },
             #     "./checkpoint.pth",
             # )
             # if config["wandb"]:
             #     wandb.save("checkpoint.pth")
-            best_val_loss = val_loss
+            best_val_loss = avg_val_loss
 
         # End early in some circumstances
         # end = False
@@ -239,4 +245,4 @@ def run_train(loaders, model, config, device, run, debug=False):
     if run is not None:
         run.finish()
 
-    return val_loss
+    return avg_val_loss
