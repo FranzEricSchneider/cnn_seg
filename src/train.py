@@ -1,11 +1,13 @@
 import datetime
 import gc
+from pathlib import Path
 import torch
 from tqdm import tqdm
 import wandb
 
 from scheduler import get_scheduler
 from utils import tensor2np
+from vis import save_debug_images
 
 
 def get_tools(loader, model, config):
@@ -38,8 +40,7 @@ def train_epoch(
     device,
     scheduler=None,
     log_loss=False,
-    # log_training_images=False,
-    # train_augmentation_path=None,
+    log_training_images=False,
 ):
 
     # Track the average loss in a tqdm progress bar
@@ -60,14 +61,14 @@ def train_epoch(
         # training up across multiple devices)
         optimizer.zero_grad()
 
-        # if log_training_images:
-        #     debug_impaths = save_debug_images(
-        #         paths,
-        #         Path("/tmp/"),
-        #         from_torch=images,
-        #         prefix=f"imgvis_{Path(train_augmentation_path).stem}_",
-        #     )
-        #     print(f"Saved debug images: {debug_impaths}")
+        if log_training_images:
+            debug_impaths = save_debug_images(
+                Path("/tmp/"),
+                torch_imgs=images,
+                torch_masks=masks,
+                prefix=f"imgvis_{Path(config['train_augmentation_path']).stem}_batch{i:04}_",
+            )
+            print(f"Saved debug images: {debug_impaths}")
 
         # Run the batch through the model
         images = images.to(device)
@@ -105,7 +106,7 @@ def train_epoch(
     batch_bar.close()
 
     # Report the epoch results to wandb
-    model.record_epoch_end("train", lr=float(optimizer.param_groups[0]['lr']))
+    model.record_epoch_end("train", lr=float(optimizer.param_groups[0]["lr"]))
 
     # Return the average loss over all batches
     avg_loss = total_loss / len(loader)
@@ -172,7 +173,7 @@ def run_train(loaders, model, config, device, run, debug=False):
         "optimizer": optimizer,
         "config": config,
         "device": device,
-        # "train_augmentation_path": config["train_augmentation_path"],
+        "log_training_images": config["log_training_images"],
     }
     if config["scheduler"] in ["CosMulti", "LRTest", "OneCycleLR"]:
         step_kwargs["scheduler"] = scheduler

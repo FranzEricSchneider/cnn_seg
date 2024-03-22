@@ -30,14 +30,14 @@ CONFIG = {
 
     "lr": 1e-4,
     "scheduler": "constant",
-    # "StepLR_kwargs": {"step_size": 5, "gamma": 0.2},
-    # "LRTest_kwargs": {"min_per_epoch": 0.05, "runtime_min": 6, "start": 1e-6, "end": 1.0},
-    # "OneCycleLR_kwargs": {"max_lr": 5e-3, "min_lr": 5e-5},
-    # "CosMulti_kwargs": {"epoch_per_cycle": 5, "eta_min": 6e-6},
-    # # mode: min (ideally value goes down) or max (opposite)
-    # # factor: scale factor for LR
-    # # patience: number of epochs with no improvement after which LR is reduced
-    # "ReduceLROnPlateau_kwargs": {"mode": "min", "patience": 2, "factor": 0.5, "min_lr": 6e-6},
+    "StepLR_kwargs": {"step_size": 5, "gamma": 0.2},
+    "LRTest_kwargs": {"min_per_epoch": 0.05, "runtime_min": 6, "start": 1e-6, "end": 1.0},
+    "OneCycleLR_kwargs": {"max_lr": 5e-3, "min_lr": 5e-5},
+    "CosMulti_kwargs": {"epoch_per_cycle": 5, "eta_min": 6e-6},
+    # mode: min (ideally value goes down) or max (opposite)
+    # factor: scale factor for LR
+    # patience: number of epochs with no improvement after which LR is reduced
+    "ReduceLROnPlateau_kwargs": {"mode": "min", "patience": 2, "factor": 0.5, "min_lr": 6e-6},
 
     # When doing an LRTest, what frequency do you want to report from the
     # batches? A tri of 1 will report every batch
@@ -53,6 +53,9 @@ CONFIG = {
 
     # Randomly view one validation image per batch
     "vis_val_images": True,
+
+    # Save all (augmented) training images to /tmp/ for debug (slow)
+    "log_training_images": False,
 
     # Increase if you can handle it, generally
     "batch_size": 6,
