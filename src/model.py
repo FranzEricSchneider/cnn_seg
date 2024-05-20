@@ -1,6 +1,7 @@
 import json
 from matplotlib import pyplot
 import numpy
+from pathlib import Path
 import time
 import torch
 import wandb
@@ -117,12 +118,15 @@ class SegModel:
             and self.config["vis_val_images"]
             and len(self.outputs[stage]) == 0
         ):
+            impath = Path(f"/tmp/val_vis_{int(time.time() * 1e6)}.jpg")
             vis_image(
                 tensor=image[0],
                 gt_mask=mask[0],
                 pred_mask=pred_mask[0],
-                save_path=f"/tmp/val_vis_{int(time.time() * 1e6)}.jpg",
+                save_path=impath,
             )
+            if self.run is not None:
+                self.run.log({"val_vis_first_image": wandb.Image(str(impath))})
 
         # Compute TN/FP/TP/FN pixels as reporting stats for each image
         tp, fp, fn, tn = smp.metrics.get_stats(
@@ -167,15 +171,14 @@ class SegModel:
             f"{stage}_per_im_iou": mean_image_iou,
             f"{stage}_dataset_iou": dataset_iou,
         }
-        if lr is not Nonw:
+        if lr is not None:
             log_values.update({"lr": lr})
-        wandb.log(log_values)
+        self.run.log(log_values)
 
 
 if __name__ == "__main__":
 
     import argparse
-    from pathlib import Path
 
     parser = argparse.ArgumentParser(
         description="Run a really basic validation model through the first"

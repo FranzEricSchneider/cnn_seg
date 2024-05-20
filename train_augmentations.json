@@ -4,11 +4,20 @@
         {}
     ],
     [
+        "RandomRotation",
+        {
+            "degrees": [
+                0,
+                180
+            ]
+        }
+    ],
+    [
         "RandomCrop",
         {
             "size": [
-                224,
-                224
+                352,
+                352
             ]
         }
     ],

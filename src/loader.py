@@ -40,9 +40,17 @@ def build_transform(augpath):
 def get_loaders(config):
 
     loaders = []
-    for subdir, shuffle in (("train", True), ("val", False), ("test", False)):
+    # NOTE: I know it's unusual to shuffle validation, but the easiest vis
+    # option was to visualize the first val image and I wanted to make it
+    # a random image
+    for subdir, shuffle in (("train", True), ("val", True), ("test", False)):
 
         augpath = Path(config[f"{subdir}_augmentation_path"])
+
+        color_transforms = None
+        key = f"{subdir}_color_augmentation_path"
+        if key in config:
+            color_transforms = build_transform(Path(config[key]))
 
         imdir = config["data_dir"] / subdir / "images"
         maskdir = config["data_dir"] / subdir / "masks"
@@ -51,6 +59,7 @@ def get_loaders(config):
             sorted(imdir.glob("*.jpg")),
             sorted(maskdir.glob("*.npy")),
             transforms=build_transform(augpath),
+            color_transforms=color_transforms
         )
 
         loaders.append(
@@ -85,7 +94,7 @@ def get_loaders(config):
 # Inspired by
 # https://pyimagesearch.com/2021/11/08/u-net-training-image-segmentation-models-in-pytorch/
 class SegmentationDataset(Dataset):
-    def __init__(self, impaths, maskpaths, transforms):
+    def __init__(self, impaths, maskpaths, transforms, color_transforms=None):
         """
         Arguments:
             impaths: list of Path objects for images openable with cv2.imread
@@ -114,6 +123,8 @@ class SegmentationDataset(Dataset):
         else:
             self.transforms = transforms
 
+        self.color_transforms = color_transforms
+
     def __len__(self):
         return len(self.impaths)
 
@@ -124,8 +135,10 @@ class SegmentationDataset(Dataset):
         image = cv2.cvtColor(cv2.imread(str(self.impaths[idx])), cv2.COLOR_BGR2RGB)
         mask = (numpy.load(self.maskpaths[idx]) * 255).astype(numpy.uint8)
 
-        # TODO: We're going to need to split space-based transformations that
-        # should apply to both, and color-based transformations which shouldn't
+        # If there are specific color transforms defined, apply them
+        if self.color_transforms is not None:
+            image = self.color_transforms(image)
+        # Then apply spatial transforms to the image and the mask in tandem
         image, mask = self.transforms(image, mask)
 
         # Return a tuple of the image and its mask

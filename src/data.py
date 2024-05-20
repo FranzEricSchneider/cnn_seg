@@ -10,6 +10,7 @@ That way you can provide the flag ('_mask' in this case) and the code will
 first look for all files matching the flags (*_mask*.jpg) and then go one by
 one and find the images with names where the flag is removed.
 """
+
 import argparse
 from pathlib import Path
 import numpy

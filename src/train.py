@@ -61,15 +61,6 @@ def train_epoch(
         # training up across multiple devices)
         optimizer.zero_grad()
 
-        if log_training_images:
-            debug_impaths = save_debug_images(
-                Path("/tmp/"),
-                torch_imgs=images,
-                torch_masks=masks,
-                prefix=f"imgvis_{Path(config['train_augmentation_path']).stem}_batch{i:04}_",
-            )
-            print(f"Saved debug images: {debug_impaths}")
-
         # Run the batch through the model
         images = images.to(device)
         masks = masks.to(device)
@@ -99,6 +90,16 @@ def train_epoch(
         # For some schedulers, we want to step every training batch
         if scheduler is not None:
             scheduler.step()
+
+        # Save augmented training images for inspection
+        if log_training_images:
+            debug_impaths = save_debug_images(
+                Path("/tmp/"),
+                torch_imgs=images,
+                torch_masks=masks,
+                prefix=f"imgvis_{Path(config['train_augmentation_path']).stem}_batch{i:04}_",
+            )
+            print(f"Saved debug images: {debug_impaths}")
 
         del images, masks, loss
         torch.cuda.empty_cache()
@@ -206,18 +207,18 @@ def run_train(loaders, model, config, device, run, debug=False):
 
         # Save the best current model
         if avg_val_loss < best_val_loss:
-            print("I should be saving a model but I am not! TODO")
-            # torch.save(
-            #     {
-            #         "model_state_dict": model.state_dict(),
-            #         "optimizer_state_dict": optimizer.state_dict(),
-            #         "avg_val_loss": avg_val_loss,
-            #         "epoch": epoch,
-            #     },
-            #     "./checkpoint.pth",
-            # )
-            # if config["wandb"]:
-            #     wandb.save("checkpoint.pth")
+            print("Saving a new best model")
+            if config["wandb"]:
+                torch.save(
+                    {
+                        "model_state_dict": model.model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "avg_val_loss": avg_val_loss,
+                        "epoch": epoch,
+                    },
+                    "./checkpoint.pth",
+                )
+                wandb.save("checkpoint.pth")
             best_val_loss = avg_val_loss
 
         # End early in some circumstances
