@@ -159,6 +159,39 @@ def evaluate(loader, model, device):
     return total_loss
 
 
+def save_inference(model, loaders, keys, config, device):
+
+    """
+    Arguments:
+        model: SegModel object
+        loaders: List of loaders (e.g. [train_loader, val_loader])
+        keys: List of the names of the loaders (e.g. ["train", "val"])
+        config: settings as a dictionary
+        device: cpu or cuda
+    """
+
+    if config["model"] is None:
+        model_name = f"{config['architecture']}_{config['encoder']}"
+    else:
+        model_name = config["model"]["run_path"].replace("/", "_")
+
+    vectors = {"impaths": [], "vectors": []}
+    for loader, key in zip(loaders, keys):
+        avg_loss = evaluate(loader, model, device)
+        # file = Path(f"model_{model_name}_{key}.json")
+        # json.dump(
+        #     {
+        #         Path(impath).name: output
+        #         for impath, output in zip(result["impaths"], result["outputs"])
+        #     },
+        #     file.open("w"),
+        #     indent=4,
+        #     sort_keys=True,
+        # )
+        # print(f"Saved to {file}")
+        print(f"Average average loss for {key}: {avg_loss:.3f}")
+
+
 def run_train(loaders, model, config, device, run, debug=False):
 
     train_loader, val_loader, _ = loaders

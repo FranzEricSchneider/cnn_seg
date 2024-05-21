@@ -1,10 +1,12 @@
 import json
 from matplotlib import pyplot
 import numpy
+from os import rename
 from pathlib import Path
 import time
 import torch
 import wandb
+import yaml
 
 import segmentation_models_pytorch as smp
 import torchseg
@@ -174,6 +176,48 @@ class SegModel:
         if lr is not None:
             log_values.update({"lr": lr})
         self.run.log(log_values)
+
+
+def load_wandb_config(run_path=None, new_file="wandb_config.yaml", config_path=None):
+    """
+    The wandb config splits config values into desc (description) and value
+    (the stuff we want). Undo that.
+    """
+    if config_path is None:
+        path = wandb.restore(name="config.yaml", run_path=run_path, replace=True)
+        path = Path(path.name)
+        rename(path.name, new_file.name)
+        config_path = new_file
+    wandb_dict = yaml.safe_load(config_path.open("r"))
+    loaded_config = {}
+    for key, value in wandb_dict.items():
+        if isinstance(value, dict) and "value" in value:
+            loaded_config[key] = value["value"]
+    return loaded_config
+
+
+def model_from_pth(settings, device):
+
+    if isinstance(settings, dict):
+        path = wandb.restore(**settings)
+        path = Path(path.name)
+        load_file = path.parent.joinpath(
+            f"{settings['run_path'].replace('/', '_')}.pth"
+        )
+        rename(path.name, load_file.name)
+        config = load_wandb_config(
+            run_path=settings["run_path"], new_file=load_file.with_suffix(".yaml")
+        )
+
+    else:
+        raise NotImplementedError(f"Unknown setting type: {type(settings)}")
+
+    model = SegModel(config, device)
+    model.model.load_state_dict(
+        torch.load(load_file, map_location=torch.device(device))["model_state_dict"]
+    )
+
+    return model
 
 
 if __name__ == "__main__":

@@ -4,9 +4,9 @@ CONFIG = {
     "data_dir": None,
     "extension": "jpg",
 
-    "train": True,
+    "train": False,
 
-    "wandb": True,
+    "wandb": False,
     "wandb_print": [
         "architecture",
         "encoder",
@@ -16,17 +16,8 @@ CONFIG = {
     "architecture": "unet",
     "encoder": "resnet18",
 
-    # "models": [],
-    # # "models": ["checkpoint.pth"],
-    # # "models": [{"name": "checkpoint.pth", "run_path": "image-regression/3q34k58v", "replace": True}],
-    # # "models": [{"name": "checkpoint.pth", "run_path": "image-regression/fqsx3zdk", "replace": True},
-    # #            {"name": "checkpoint.pth", "run_path": "image-regression/37z196qx", "replace": True},
-    # #            {"name": "checkpoint.pth", "run_path": "image-regression/phan45yu", "replace": True}],
-    # # "models": ["checkpoint.pth",
-    # #            {"name": "checkpoint.pth", "run_path": "image-regression/sk5209ak", "replace": True}],
-    # # If we define a model using a path to a .pth file, this needs to be a list
-    # # to the corresponding wandb config.yaml file
-    # "config_paths": None,
+    "model": None,
+    # "model": {"name": "checkpoint.pth", "run_path": "cnn-segmentation/1id6monj", "replace": True},
 
     "lr": 1e-4,
     "scheduler": "constant",

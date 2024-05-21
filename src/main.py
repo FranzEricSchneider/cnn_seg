@@ -1,24 +1,32 @@
 import torch
 
 from loader import get_loaders
-from model import SegModel
-from train import run_train
+from model import model_from_pth, SegModel
+from train import run_train, save_inference
 from utils import load_config, login_wandb, wandb_run
 
 
 def main():
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     config = load_config()
+
     run = None
     if config["wandb"]:
         login_wandb(config)
         run = wandb_run(config)
+
     loaders = get_loaders(config)
-    model = SegModel(config, device, run)
+
+    if config["model"] is None:
+        model = SegModel(config, device, run)
+    else:
+        model = model_from_pth(config["model"], device)
+
     if config["train"]:
         run_train(loaders, model, config, device, run, debug=False)
     else:
-        save_inference(models, loaders, ("train", "val", "test"), config)
+        save_inference(model, loaders, ("train", "val", "test"), config, device)
 
 
 if __name__ == "__main__":
