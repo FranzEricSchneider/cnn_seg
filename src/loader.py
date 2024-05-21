@@ -40,10 +40,7 @@ def build_transform(augpath):
 def get_loaders(config):
 
     loaders = []
-    # NOTE: I know it's unusual to shuffle validation, but the easiest vis
-    # option was to visualize the first val image and I wanted to make it
-    # a random image
-    for subdir, shuffle in (("train", True), ("val", True), ("test", False)):
+    for subdir, shuffle in (("train", True), ("val", False), ("test", False)):
 
         augpath = Path(config[f"{subdir}_augmentation_path"])
 

@@ -1,6 +1,7 @@
 import argparse
 import copy
 import json
+import numpy
 from pathlib import Path
 import wandb
 
@@ -16,7 +17,10 @@ def key_string(key):
 
 
 def tensor2np(tensor):
-    return tensor.detach().cpu().numpy()
+    if isinstance(tensor, numpy.ndarray):
+        return tensor
+    else:
+        return tensor.detach().cpu().numpy()
 
 
 def login_wandb(config):

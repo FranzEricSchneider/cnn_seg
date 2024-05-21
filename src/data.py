@@ -12,6 +12,7 @@ one and find the images with names where the flag is removed.
 """
 
 import argparse
+import cv2
 from pathlib import Path
 import numpy
 from PIL import Image
@@ -84,8 +85,9 @@ def main():
         "--maskflag",
         help="String component of the file names that is unique to mask files"
         " and, when removed, gives you the name of the corresponding image. See"
-        " the assumptions in the intro text.",
-        required=True,
+        " the assumptions in the intro text. IF THIS IS NONE then we assume"
+        " there are no masks and we must generate empty mask files so that"
+        " unlabled images can be evaluated.",
     )
     parser.add_argument(
         "--valfrac",
@@ -123,14 +125,26 @@ def main():
 
     # Gather all of the masks
     assert args.datadir.is_dir(), f"{args.datadir} not found"
-    all_masks = sorted(args.datadir.glob(f"*{args.maskflag}*jpg"))
+
+    # If there are no masks, generate empty ones so that we can evaluate
+    # unlabeled images
+    maskflag = args.maskflag
+    if maskflag is None:
+        maskflag = "_empty-mask"
+        for impath in args.datadir.glob(f"*jpg"):
+            cv2.imwrite(
+                str(impath.with_name(f"{impath.stem}{maskflag}.jpg")),
+                numpy.zeros((args.height, args.width, 3), dtype=numpy.uint8)
+            )
+
+    all_masks = sorted(args.datadir.glob(f"*{maskflag}*jpg"))
     assert (
         len(all_masks) > 0
-    ), f"No files found with f{args.datadir}/*{args.maskflag}*jpg"
+    ), f"No files found with f{args.datadir}/*{maskflag}*jpg"
 
     # Gather all of the corresponding image files
     all_images = [
-        mask.parent / mask.name.replace(args.maskflag, "") for mask in all_masks
+        mask.parent / mask.name.replace(maskflag, "") for mask in all_masks
     ]
     for impath in all_images:
         assert impath.is_file(), f"{impath} expected but not found"
@@ -169,7 +183,7 @@ def main():
             process(
                 savedir=args.savedir / subdir,
                 mpath=mpath,
-                flag=args.maskflag,
+                flag=maskflag,
                 size=(args.width, args.height),
             )
 

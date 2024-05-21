@@ -4,9 +4,9 @@ CONFIG = {
     "data_dir": None,
     "extension": "jpg",
 
-    "train": False,
+    "train": True,
 
-    "wandb": False,
+    "wandb": True,
     "wandb_print": [
         "architecture",
         "encoder",
@@ -34,14 +34,20 @@ CONFIG = {
     # batches? A tri of 1 will report every batch
     "train_report_iter": 1,
 
-    # Augmentations are stored in a json file as (name, kwargs). They are
-    # applied in the loader phase. The way to experiment with augmentations is
-    # to make a copy of the file, set those that you want, and then select the
-    # files one-by-one as a command-line argument.
+    # # Augmentations are stored in a json file as (name, kwargs). They are
+    # # applied in the loader phase. The way to experiment with augmentations is
+    # # to make a copy of the file, set those that you want, and then select the
+    # # files one-by-one as a command-line argument.
     "train_augmentation_path": "train_augmentations.json",
     "train_color_augmentation_path": "train_color_augmentations.json",
     "val_augmentation_path": "val_augmentations.json",
     "test_augmentation_path": "test_augmentations.json",
+
+    # # These augmentation files have no adjustments and can we used to get a
+    # # whole image for evaluation
+    # "train_augmentation_path": "inference_augmentations.json",
+    # "val_augmentation_path": "inference_augmentations.json",
+    # "test_augmentation_path": "inference_augmentations.json",
 
     # Randomly view one validation image per batch (and save to wandb if on)
     "vis_val_images": True,

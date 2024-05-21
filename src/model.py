@@ -12,32 +12,7 @@ import segmentation_models_pytorch as smp
 import torchseg
 
 from utils import tensor2np
-
-
-def vis_image(tensor, gt_mask, pred_mask, save_path):
-
-    from matplotlib import pyplot
-
-    figure = pyplot.figure(figsize=(5, 2.5))
-
-    pyplot.subplot(1, 3, 1)
-    pyplot.imshow(tensor2np(tensor).transpose(1, 2, 0))  # convert CHW -> HWC
-    pyplot.title("Image")
-    pyplot.axis("off")
-
-    pyplot.subplot(1, 3, 2)
-    pyplot.imshow(tensor2np(gt_mask).squeeze(), vmin=0, vmax=1)
-    pyplot.title("Ground truth")
-    pyplot.axis("off")
-
-    pyplot.subplot(1, 3, 3)
-    pyplot.imshow(tensor2np(pred_mask).squeeze(), vmin=0, vmax=1)
-    pyplot.title("Prediction")
-    pyplot.axis("off")
-
-    pyplot.tight_layout()
-    pyplot.savefig(save_path)
-    pyplot.close(figure)
+from vis import vis_image
 
 
 class SegModel:
@@ -78,7 +53,7 @@ class SegModel:
         mask = self.model(image)
         return mask
 
-    def process_batch(self, image, mask, stage):
+    def process_batch(self, image, mask, stage, keep_output=False):
         """
         Arguments:
             image: batch of images that have already been transformed
@@ -89,6 +64,9 @@ class SegModel:
                 optional validation in the "val" stage, and also records output
                 stats by stage. It's up to the code that calls this function to
                 clear self.outputs between batches
+            keep_output: If True, we will store the output mask as a floating
+                point numpy array in the self.output[stage]. This is memory
+                intensive and likely should not be done during training.
 
         returns: loss (defined by self.loss_fn()) as a tensor, such that
             loss.backward() works if desired
@@ -140,6 +118,8 @@ class SegModel:
         self.outputs[stage].append(
             {"loss": tensor2np(loss), "tp": tp, "fp": fp, "fn": fn, "tn": tn}
         )
+        if keep_output:
+            self.outputs[stage][-1]["mask"] = tensor2np(logits_mask.sigmoid())
 
         return loss
 

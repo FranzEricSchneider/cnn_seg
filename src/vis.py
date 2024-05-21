@@ -2,6 +2,8 @@ import cv2
 import numpy
 from pathlib import Path
 
+from utils import tensor2np
+
 
 def torch_img_to_array(torch_img, sigma=3):
     # Convert torch to numpy
@@ -49,3 +51,29 @@ def save_debug_images(
         new_impaths.append(savedir / name)
         cv2.imwrite(str(new_impaths[-1]), uint8_image)
     return new_impaths
+
+
+def vis_image(tensor, gt_mask, pred_mask, save_path):
+
+    from matplotlib import pyplot
+
+    figure = pyplot.figure(figsize=(5, 2.5))
+
+    pyplot.subplot(1, 3, 1)
+    pyplot.imshow(tensor2np(tensor).transpose(1, 2, 0))  # convert CHW -> HWC
+    pyplot.title("Image")
+    pyplot.axis("off")
+
+    pyplot.subplot(1, 3, 2)
+    pyplot.imshow(tensor2np(gt_mask).squeeze(), vmin=0, vmax=1)
+    pyplot.title("Ground truth")
+    pyplot.axis("off")
+
+    pyplot.subplot(1, 3, 3)
+    pyplot.imshow(tensor2np(pred_mask).squeeze(), vmin=0, vmax=1)
+    pyplot.title("Prediction")
+    pyplot.axis("off")
+
+    pyplot.tight_layout()
+    pyplot.savefig(save_path)
+    pyplot.close(figure)

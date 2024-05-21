@@ -12,8 +12,9 @@ def main():
     config = load_config()
 
     run = None
-    if config["wandb"]:
+    if config["wandb"] or config["model"] is not None:
         login_wandb(config)
+    if config["wandb"]:
         run = wandb_run(config)
 
     loaders = get_loaders(config)

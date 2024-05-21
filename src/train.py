@@ -7,7 +7,7 @@ import wandb
 
 from scheduler import get_scheduler
 from utils import tensor2np
-from vis import save_debug_images
+from vis import save_debug_images, vis_image
 
 
 def get_tools(loader, model, config):
@@ -119,7 +119,16 @@ def train_epoch(
     return avg_loss
 
 
-def evaluate(loader, model, device):
+def evaluate(loader, model, device, keep_output=False):
+    """
+    Arguments:
+        model: SegModel object
+        loader: Data loader
+        device: cpu or cuda
+        keep_output: If True, we will store the output mask as a floating point
+            numpy array in the model.output["val"]. This is memory intensive
+            and likely should not be done during training.
+    """
 
     # Track the average loss in a tqdm progress bar
     total_loss = 0
@@ -139,7 +148,7 @@ def evaluate(loader, model, device):
         images = images.to(device)
         masks = masks.to(device)
         with torch.inference_mode():
-            loss = model.process_batch(images, masks, "val")
+            loss = model.process_batch(images, masks, "val", keep_output=keep_output)
 
         # Track the average loss in a tqdm progress bar
         total_loss += float(tensor2np(loss))
@@ -177,7 +186,18 @@ def save_inference(model, loaders, keys, config, device):
 
     vectors = {"impaths": [], "vectors": []}
     for loader, key in zip(loaders, keys):
-        avg_loss = evaluate(loader, model, device)
+        avg_loss = evaluate(loader, model, device, keep_output=True)
+        print(f"Stage {key}:")
+
+        for i, ((images, masks), output) in enumerate(zip(tqdm(loader), model.outputs["val"])):
+            for j, (image, mask, pred_mask) in enumerate(zip(images, masks, output["mask"])):
+                vis_image(
+                    tensor=image,
+                    gt_mask=mask,
+                    pred_mask=pred_mask,
+                    save_path=Path(f"/tmp/inference_{key}_batch{i:04}_image{j:02}.jpg"),
+                )
+
         # file = Path(f"model_{model_name}_{key}.json")
         # json.dump(
         #     {
@@ -190,6 +210,7 @@ def save_inference(model, loaders, keys, config, device):
         # )
         # print(f"Saved to {file}")
         print(f"Average average loss for {key}: {avg_loss:.3f}")
+        print("Check /tmp/ for inference images")
 
 
 def run_train(loaders, model, config, device, run, debug=False):
