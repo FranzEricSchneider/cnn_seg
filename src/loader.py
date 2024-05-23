@@ -40,7 +40,11 @@ def build_transform(augpath):
 def get_loaders(config):
 
     loaders = []
-    for subdir, shuffle in (("train", True), ("val", False), ("test", False)):
+    for subdir, shuffle in (
+        ("train", True if config["train"] else False),
+        ("val", False),
+        ("test", False),
+    ):
 
         augpath = Path(config[f"{subdir}_augmentation_path"])
 
@@ -56,7 +60,7 @@ def get_loaders(config):
             sorted(imdir.glob("*.jpg")),
             sorted(maskdir.glob("*.npy")),
             transforms=build_transform(augpath),
-            color_transforms=color_transforms
+            color_transforms=color_transforms,
         )
 
         loaders.append(
@@ -138,8 +142,8 @@ class SegmentationDataset(Dataset):
         # Then apply spatial transforms to the image and the mask in tandem
         image, mask = self.transforms(image, mask)
 
-        # Return a tuple of the image and its mask
-        return (image, mask)
+        # Return a tuple of the image, its mask, and the filename
+        return (image, mask, str(self.impaths[idx].name))
 
 
 # Test out the loader

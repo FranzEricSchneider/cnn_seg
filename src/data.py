@@ -134,18 +134,14 @@ def main():
         for impath in args.datadir.glob(f"*jpg"):
             cv2.imwrite(
                 str(impath.with_name(f"{impath.stem}{maskflag}.jpg")),
-                numpy.zeros((args.height, args.width, 3), dtype=numpy.uint8)
+                numpy.zeros((args.height, args.width, 3), dtype=numpy.uint8),
             )
 
     all_masks = sorted(args.datadir.glob(f"*{maskflag}*jpg"))
-    assert (
-        len(all_masks) > 0
-    ), f"No files found with f{args.datadir}/*{maskflag}*jpg"
+    assert len(all_masks) > 0, f"No files found with f{args.datadir}/*{maskflag}*jpg"
 
     # Gather all of the corresponding image files
-    all_images = [
-        mask.parent / mask.name.replace(maskflag, "") for mask in all_masks
-    ]
+    all_images = [mask.parent / mask.name.replace(maskflag, "") for mask in all_masks]
     for impath in all_images:
         assert impath.is_file(), f"{impath} expected but not found"
 

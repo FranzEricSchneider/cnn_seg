@@ -254,7 +254,7 @@ if __name__ == "__main__":
     )
     model.model.eval()
 
-    for i, (image, mask) in enumerate(dataloader):
+    for i, (image, mask, _) in enumerate(dataloader):
         if i == args.count:
             break
         print(f"Batch {i + 1} / {args.count}")

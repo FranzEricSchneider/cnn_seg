@@ -1,5 +1,6 @@
 import datetime
 import gc
+import numpy
 from pathlib import Path
 import torch
 from tqdm import tqdm
@@ -21,7 +22,7 @@ def get_tools(loader, model, config):
 def sanity_check(loader, model, device):
     model.model.eval()
     print("Sanity check:")
-    for i, (images, masks) in enumerate(loader):
+    for i, (images, masks, _) in enumerate(loader):
         print("\timages.shape", images.shape)
         print("\tmasks.shape", masks.shape)
         images = images.to(device)
@@ -55,7 +56,7 @@ def train_epoch(
     # Set model into training mode
     model.model.train()
 
-    for i, (images, masks) in enumerate(loader):
+    for i, (images, masks, _) in enumerate(loader):
 
         # Zero gradients (necessary to call explicitly in case you have split
         # training up across multiple devices)
@@ -142,7 +143,7 @@ def evaluate(loader, model, device, keep_output=False):
     # Set model into training mode
     model.model.eval()
 
-    for i, (images, masks) in enumerate(loader):
+    for i, (images, masks, _) in enumerate(loader):
 
         # Run the batch through the model
         images = images.to(device)
@@ -189,28 +190,25 @@ def save_inference(model, loaders, keys, config, device):
         avg_loss = evaluate(loader, model, device, keep_output=True)
         print(f"Stage {key}:")
 
-        for i, ((images, masks), output) in enumerate(zip(tqdm(loader), model.outputs["val"])):
-            for j, (image, mask, pred_mask) in enumerate(zip(images, masks, output["mask"])):
+        for i, ((images, masks, filenames), output) in enumerate(
+            zip(tqdm(loader), model.outputs["val"])
+        ):
+            for j, (image, mask, filename, pred_mask) in enumerate(
+                zip(images, masks, filenames, output["mask"])
+            ):
                 vis_image(
                     tensor=image,
                     gt_mask=mask,
                     pred_mask=pred_mask,
                     save_path=Path(f"/tmp/inference_{key}_batch{i:04}_image{j:02}.jpg"),
                 )
+                numpy.save(
+                    Path(f"/tmp/{filename.replace('.jpg', '.npy')}"),
+                    pred_mask.squeeze() > 0.5,
+                )
 
-        # file = Path(f"model_{model_name}_{key}.json")
-        # json.dump(
-        #     {
-        #         Path(impath).name: output
-        #         for impath, output in zip(result["impaths"], result["outputs"])
-        #     },
-        #     file.open("w"),
-        #     indent=4,
-        #     sort_keys=True,
-        # )
-        # print(f"Saved to {file}")
         print(f"Average average loss for {key}: {avg_loss:.3f}")
-        print("Check /tmp/ for inference images")
+        print("Check /tmp/ for inference images and masks")
 
 
 def run_train(loaders, model, config, device, run, debug=False):
