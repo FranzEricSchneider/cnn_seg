@@ -13,6 +13,7 @@ one and find the images with names where the flag is removed.
 
 import argparse
 import cv2
+import json
 from pathlib import Path
 import numpy
 from PIL import Image
@@ -25,7 +26,7 @@ except AttributeError:
     ANTIALIAS = Image.ANTIALIAS
 
 
-def process(savedir, mpath, flag, size):
+def process(savedir, mpath, flag, size, as_float):
     """
     Take in a directory and a mask file, then save a resized version of the
     mask and image in the appropriate types (.npy boolean mask and .jpg image).
@@ -42,11 +43,22 @@ def process(savedir, mpath, flag, size):
                 render_bw_0001.jpg    [mask]
                 flag: '_bw'
         size: (width, height) that we want to resize the images to
+        as_float: Boolean, whether to save mask as a floating .npy instead of
+            a boolean one (10x larger)
     """
     mask = resize(mpath, size).mean(axis=2)
-    boolmask = numpy.zeros(mask.shape, dtype=bool)
-    boolmask[mask < 128] = True
-    numpy.save(savedir / "masks" / mpath.stem, boolmask)
+    if as_float:
+        # Make a floating point mask where middling values will be saved as 0.5
+        # and treated as invalid mask points
+        floatmask = numpy.zeros(mask.shape)
+        floatmask[(mask > 65) & (mask < 190)] = 0.5
+        floatmask[mask >= 190] = 1
+        mask = floatmask
+    else:
+        boolmask = numpy.zeros(mask.shape, dtype=bool)
+        boolmask[mask < 128] = True
+        mask = boolmask
+    numpy.save(savedir / "masks" / mpath.stem, mask)
 
     impath = mpath.parent / mpath.name.replace(flag, "")
     resize(impath, size, savepath=savedir / "images" / impath.name)
@@ -58,6 +70,39 @@ def resize(impath, size, savepath=None):
         resized.save(savepath)
     else:
         return numpy.array(resized)
+
+
+def make_seg_image(
+    height, width, candidates, original_height=3036, original_width=4024
+):
+
+    # By default the pixels should be 0.5
+    image = numpy.ones((height, width, 3)) * 0.5
+
+    # Then label plant as 1 and not-plant as 0
+    plant = numpy.array(
+        [pixel for pixel, label in candidates if label == "plant"], dtype=float
+    )
+    not_plant = numpy.array(
+        [pixel for pixel, label in candidates if label == "not-plant"], dtype=float
+    )
+
+    # Adjust the pixels down to size
+    def shrink(array):
+        array[:, 0] *= height / original_height
+        array[:, 1] *= width / original_width
+        array = (array + 0.5).astype(int)
+        array[:, 0] = numpy.clip(array[:, 0], 0, height - 1)
+        array[:, 1] = numpy.clip(array[:, 1], 0, width - 1)
+        return array
+    plant = shrink(plant)
+    not_plant = shrink(not_plant)
+
+    # Set certain pixels to 0 or 1
+    for array, value in ((plant, 1), (not_plant, 0)):
+        image[array[:, 0], array[:, 1]] = value
+
+    return (image * 255).astype(numpy.uint8)
 
 
 def main():
@@ -79,15 +124,6 @@ def main():
         " It is assumed that this path will not yet exist.",
         type=Path,
         required=True,
-    )
-    parser.add_argument(
-        "-f",
-        "--maskflag",
-        help="String component of the file names that is unique to mask files"
-        " and, when removed, gives you the name of the corresponding image. See"
-        " the assumptions in the intro text. IF THIS IS NONE then we assume"
-        " there are no masks and we must generate empty mask files so that"
-        " unlabled images can be evaluated.",
     )
     parser.add_argument(
         "--valfrac",
@@ -121,6 +157,33 @@ def main():
         type=int,
         default=12345,
     )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "-f",
+        "--maskflag",
+        help="String component of the file names that is unique to mask files"
+        " and, when removed, gives you the name of the corresponding image. See"
+        " the assumptions in the intro text. IF THIS IS NONE then we assume"
+        " there are no masks and we must generate empty mask files so that"
+        " unlabled images can be evaluated.",
+    )
+    group.add_argument(
+        "-n",
+        "--no-labels",
+        help="If given, this indicates that there are no mask files and we"
+        " should create empty masks for the given images. This is useful for"
+        " doing qualitative segmentation on real images.",
+        action="store_true",
+    )
+    group.add_argument(
+        "-S",
+        "--segmentation-labels",
+        help="Path to a file containing [(imname, [pixel], label), ...] data"
+        " for pixel-wise segmentation. This process will create masks where"
+        " plants become '1', not-plant becomes '0', and unknown becomes '0.5'."
+        " Save the masks as floating-point .npy files.",
+        type=Path,
+    )
     args = parser.parse_args()
 
     # Gather all of the masks
@@ -129,12 +192,31 @@ def main():
     # If there are no masks, generate empty ones so that we can evaluate
     # unlabeled images
     maskflag = args.maskflag
-    if maskflag is None:
+    if args.no_labels:
         maskflag = "_empty-mask"
         for impath in args.datadir.glob(f"*jpg"):
             cv2.imwrite(
                 str(impath.with_name(f"{impath.stem}{maskflag}.jpg")),
                 numpy.zeros((args.height, args.width, 3), dtype=numpy.uint8),
+            )
+
+    elif args.segmentation_labels is not None:
+        segdata = json.load(args.segmentation_labels.open("r"))
+        assert isinstance(segdata, list)
+
+        maskflag = "_seg-pixels"
+        for impath in args.datadir.glob(f"*jpg"):
+            candidates = [
+                (pixel, label)
+                for imname, pixel, label in segdata
+                if imname == impath.name
+            ]
+            assert (
+                len(candidates) > 0
+            ), f"Impath {impath} not found in segdata: {args.segmentation_labels}"
+            cv2.imwrite(
+                str(impath.with_name(f"{impath.stem}{maskflag}.jpg")),
+                make_seg_image(args.height, args.width, candidates),
             )
 
     all_masks = sorted(args.datadir.glob(f"*{maskflag}*jpg"))
@@ -181,6 +263,7 @@ def main():
                 mpath=mpath,
                 flag=maskflag,
                 size=(args.width, args.height),
+                as_float=args.segmentation_labels is not None,
             )
 
 

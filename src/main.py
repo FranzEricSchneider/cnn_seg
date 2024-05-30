@@ -22,7 +22,7 @@ def main():
     if config["model"] is None:
         model = SegModel(config, device, run)
     else:
-        model = model_from_pth(config["model"], device)
+        model = model_from_pth(config["model"], device, run)
 
     if config["train"]:
         run_train(loaders, model, config, device, run, debug=False)

@@ -166,7 +166,7 @@ def load_wandb_config(run_path=None, new_file="wandb_config.yaml", config_path=N
     if config_path is None:
         path = wandb.restore(name="config.yaml", run_path=run_path, replace=True)
         path = Path(path.name)
-        rename(path.name, new_file.name)
+        rename(path, new_file)
         config_path = new_file
     wandb_dict = yaml.safe_load(config_path.open("r"))
     loaded_config = {}
@@ -176,7 +176,7 @@ def load_wandb_config(run_path=None, new_file="wandb_config.yaml", config_path=N
     return loaded_config
 
 
-def model_from_pth(settings, device):
+def model_from_pth(settings, device, run):
 
     if isinstance(settings, dict):
         path = wandb.restore(**settings)
@@ -184,7 +184,7 @@ def model_from_pth(settings, device):
         load_file = path.parent.joinpath(
             f"{settings['run_path'].replace('/', '_')}.pth"
         )
-        rename(path.name, load_file.name)
+        rename(path, load_file)
         config = load_wandb_config(
             run_path=settings["run_path"], new_file=load_file.with_suffix(".yaml")
         )
@@ -196,6 +196,7 @@ def model_from_pth(settings, device):
     model.model.load_state_dict(
         torch.load(load_file, map_location=torch.device(device))["model_state_dict"]
     )
+    model.run = run
 
     return model
 
