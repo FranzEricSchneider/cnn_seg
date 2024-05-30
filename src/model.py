@@ -5,6 +5,7 @@ from os import rename
 from pathlib import Path
 import time
 import torch
+import torch.nn.functional as F
 import wandb
 import yaml
 
@@ -16,7 +17,7 @@ from vis import vis_image
 
 
 class SegModel:
-    def __init__(self, config, device, run=None, **kwargs):
+    def __init__(self, config, device, run=None, disable_areas=False, **kwargs):
 
         # All of the necessary arguments as a dictionary
         self.config = config
@@ -39,12 +40,13 @@ class SegModel:
 
         # TODO: Try other loss options:
         # https://smp.readthedocs.io/en/latest/losses.html
-        self.loss_fn = torchseg.losses.DiceLoss(
-            torchseg.losses.BINARY_MODE, from_logits=True
-        )
+        self.loss_fn = torchseg.losses.DiceLoss(torchseg.losses.BINARY_MODE)
 
         # Save outputs from various stages
         self.outputs = {"train": [], "val": [], "test": []}
+
+        # Save whether or not to check the mask for invalid areas (slower)
+        self.disable_areas = disable_areas
 
     def forward(self, image):
         # Normalize image
@@ -86,12 +88,25 @@ class SegModel:
 
         logits_mask = self.forward(image)
 
+        # Convert the logits into a 0-1 sigmoid valu
+        # This code was copied from the DiceLoss source code
+        #   "Using Log-Exp as this gives more numerically stable result and
+        #   does not cause vanishing gradient on extreme values 0 and 1"
+        predicted_mask = F.logsigmoid(logits_mask).exp()
+
         # Predicted mask contains logits, and loss_fn param `from_logits` is
         # set to True
-        loss = self.loss_fn(logits_mask, mask)
+        if self.disable_areas:
+            # We have somewhat hackily defined a mask value of 0.5 as an area
+            # where the value is unknown - remove those areas from the loss
+            # computation
+            good_areas = (mask < 0.25) | (mask > 0.75)
+            loss = self.loss_fn(predicted_mask * good_areas, mask * good_areas)
+        else:
+            loss = self.loss_fn(predicted_mask, mask)
 
         # Convert mask values to probabilities, then apply thresholding
-        pred_mask = (logits_mask.sigmoid() > 0.5).float()
+        threshold_mask = (predicted_mask > 0.5).float()
         # The first time through, save a debug image
         if (
             stage == "val"
@@ -102,7 +117,7 @@ class SegModel:
             vis_image(
                 tensor=image[0],
                 gt_mask=mask[0],
-                pred_mask=pred_mask[0],
+                pred_mask=threshold_mask[0],
                 save_path=impath,
             )
             if self.run is not None:
@@ -110,7 +125,7 @@ class SegModel:
 
         # Compute TN/FP/TP/FN pixels as reporting stats for each image
         tp, fp, fn, tn = smp.metrics.get_stats(
-            pred_mask.int(), mask.int(), mode="binary"
+            threshold_mask.int(), mask.int(), mode="binary"
         )
         # It's important to cost loss to numpy to avoid a huge GPU load
         # building up over time, since loss is connected to all other GPU
@@ -119,7 +134,7 @@ class SegModel:
             {"loss": tensor2np(loss), "tp": tp, "fp": fp, "fn": fn, "tn": tn}
         )
         if keep_output:
-            self.outputs[stage][-1]["mask"] = tensor2np(logits_mask.sigmoid())
+            self.outputs[stage][-1]["mask"] = tensor2np(predicted_mask)
 
         return loss
 
@@ -176,7 +191,7 @@ def load_wandb_config(run_path=None, new_file="wandb_config.yaml", config_path=N
     return loaded_config
 
 
-def model_from_pth(settings, device, run):
+def model_from_pth(settings, device, run, disable_areas):
 
     if isinstance(settings, dict):
         path = wandb.restore(**settings)
@@ -192,11 +207,10 @@ def model_from_pth(settings, device, run):
     else:
         raise NotImplementedError(f"Unknown setting type: {type(settings)}")
 
-    model = SegModel(config, device)
+    model = SegModel(config, device, run=run, disable_areas=disable_areas)
     model.model.load_state_dict(
         torch.load(load_file, map_location=torch.device(device))["model_state_dict"]
     )
-    model.run = run
 
     return model
 

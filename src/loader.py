@@ -89,7 +89,13 @@ def get_loaders(config):
             )
             wandb.save(str(path))
 
-    return loaders
+    # Check an area to see whether we should disable some areas from
+    # computation. Boolean = we know whether everything is plant/not and we
+    # don't need to disable anything. Float = keep the 0/1 values, but 0.5
+    # values should be disabled from computation
+    disable_areas = not numpy.load(dataset.maskpaths[0]).dtype == "bool"
+
+    return loaders, disable_areas
 
 
 # Inspired by

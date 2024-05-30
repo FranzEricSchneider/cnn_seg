@@ -17,12 +17,12 @@ def main():
     if config["wandb"]:
         run = wandb_run(config)
 
-    loaders = get_loaders(config)
+    loaders, disable_areas = get_loaders(config)
 
     if config["model"] is None:
-        model = SegModel(config, device, run)
+        model = SegModel(config, device, run, disable_areas)
     else:
-        model = model_from_pth(config["model"], device, run)
+        model = model_from_pth(config["model"], device, run, disable_areas)
 
     if config["train"]:
         run_train(loaders, model, config, device, run, debug=False)
