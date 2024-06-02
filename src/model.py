@@ -40,7 +40,7 @@ class SegModel:
 
         # TODO: Try other loss options:
         # https://smp.readthedocs.io/en/latest/losses.html
-        self.loss_fn = torchseg.losses.DiceLoss(torchseg.losses.BINARY_MODE)
+        self.loss_fn = torchseg.losses.DiceLoss(torchseg.losses.BINARY_MODE, from_logits=False)
 
         # Save outputs from various stages
         self.outputs = {"train": [], "val": [], "test": []}
