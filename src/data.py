@@ -89,6 +89,8 @@ def make_seg_image(
 
     # Adjust the pixels down to size
     def shrink(array):
+        if len(array) == 0:
+            return array
         array[:, 0] *= height / original_height
         array[:, 1] *= width / original_width
         array = (array + 0.5).astype(int)
@@ -100,7 +102,8 @@ def make_seg_image(
 
     # Set certain pixels to 0 or 1
     for array, value in ((plant, 1), (not_plant, 0)):
-        image[array[:, 0], array[:, 1]] = value
+        if len(array) > 0:
+            image[array[:, 0], array[:, 1]] = value
 
     return (image * 255).astype(numpy.uint8)
 
