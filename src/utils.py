@@ -5,7 +5,7 @@ import numpy
 from pathlib import Path
 import wandb
 
-from config import CONFIG
+from cnn_seg.src.config import CONFIG
 
 
 def key_string(key):

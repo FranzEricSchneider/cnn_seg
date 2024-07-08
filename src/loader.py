@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 import wandb
 
-from utils import tensor2np
+from cnn_seg.src.utils import tensor2np
 
 
 TMPDIR = Path("/tmp/")

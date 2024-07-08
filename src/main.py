@@ -1,9 +1,9 @@
 import torch
 
-from loader import get_loaders
-from model import model_from_pth, SegModel
-from train import run_train, save_inference
-from utils import load_config, login_wandb, wandb_run
+from cnn_seg.src.loader import get_loaders
+from cnn_seg.src.model import model_from_pth, SegModel
+from cnn_seg.src.train import run_train, save_inference
+from cnn_seg.src.utils import load_config, login_wandb, wandb_run
 
 
 def main():

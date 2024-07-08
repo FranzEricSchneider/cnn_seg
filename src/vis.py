@@ -2,7 +2,7 @@ import cv2
 import numpy
 from pathlib import Path
 
-from utils import tensor2np
+from cnn_seg.src.utils import tensor2np
 
 
 def torch_img_to_array(torch_img, sigma=3):

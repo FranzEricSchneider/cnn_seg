@@ -12,8 +12,8 @@ import yaml
 import segmentation_models_pytorch as smp
 import torchseg
 
-from utils import tensor2np
-from vis import vis_image
+from cnn_seg.src.utils import tensor2np
+from cnn_seg.src.vis import vis_image
 
 
 class SegModel:

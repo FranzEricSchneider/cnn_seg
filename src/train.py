@@ -6,9 +6,9 @@ import torch
 from tqdm import tqdm
 import wandb
 
-from scheduler import get_scheduler
-from utils import tensor2np
-from vis import save_debug_images, vis_image
+from cnn_seg.src.scheduler import get_scheduler
+from cnn_seg.src.utils import tensor2np
+from cnn_seg.src.vis import save_debug_images, vis_image
 
 
 def get_tools(loader, model, config):
