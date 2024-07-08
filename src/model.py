@@ -24,6 +24,9 @@ class SegModel:
         # Either None or a wandb run that can be used to track stats
         self.run = run
 
+        # Save for later
+        self.device = device
+
         self.model = torchseg.create_model(
             self.config["architecture"],
             encoder_name=self.config["encoder"],
@@ -191,7 +194,7 @@ def load_wandb_config(run_path=None, new_file="wandb_config.yaml", config_path=N
     return loaded_config
 
 
-def model_from_pth(settings, device, run, disable_areas):
+def model_from_pth(settings, device, run=None, disable_areas=False):
 
     if isinstance(settings, dict):
         path = wandb.restore(**settings)
