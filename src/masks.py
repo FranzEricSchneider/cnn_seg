@@ -13,12 +13,12 @@ def resize_mask(mask, size=(3036, 4024)):
 
     Returns: bool numpy array of the desired size
     """
-    return resize(
-        mask, size, order=0, preserve_range=True, anti_aliasing=False
-    ).astype(bool)
+    return resize(mask, size, order=0, preserve_range=True, anti_aliasing=False).astype(
+        bool
+    )
 
 
-def mask_rgb(mask):
+def mask_rgb(mask, uint=False):
     """
     Arguments:
         mask: bool numpy array
@@ -28,4 +28,6 @@ def mask_rgb(mask):
     """
     mask_im = numpy.ones(mask.shape + (3,)) * [0, 0.5, 0]
     mask_im[~mask] = 0
+    if uint:
+        mask_im = (mask_im * 255).astype(numpy.uint8)
     return mask_im

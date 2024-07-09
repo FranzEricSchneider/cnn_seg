@@ -1,7 +1,8 @@
+import argparse
 import json
 from matplotlib import pyplot
 import numpy
-from os import rename
+from os import getenv, rename
 from pathlib import Path
 import time
 import torch
@@ -43,7 +44,9 @@ class SegModel:
 
         # TODO: Try other loss options:
         # https://smp.readthedocs.io/en/latest/losses.html
-        self.loss_fn = torchseg.losses.DiceLoss(torchseg.losses.BINARY_MODE, from_logits=False)
+        self.loss_fn = torchseg.losses.DiceLoss(
+            torchseg.losses.BINARY_MODE, from_logits=False
+        )
 
         # Save outputs from various stages
         self.outputs = {"train": [], "val": [], "test": []}
@@ -207,6 +210,15 @@ def model_from_pth(settings, device, run=None, disable_areas=False):
             run_path=settings["run_path"], new_file=load_file.with_suffix(".yaml")
         )
 
+    # If we are passed two paths, use those as our load and config files
+    elif (
+        isinstance(settings, tuple)
+        and len(settings) == 2
+        and isinstance(settings[0], Path)
+    ):
+        load_file, config_path = settings
+        config = load_wandb_config(config_path=config_path)
+
     else:
         raise NotImplementedError(f"Unknown setting type: {type(settings)}")
 
@@ -218,10 +230,7 @@ def model_from_pth(settings, device, run=None, disable_areas=False):
     return model
 
 
-if __name__ == "__main__":
-
-    import argparse
-
+def test_dataloader():
     parser = argparse.ArgumentParser(
         description="Run a really basic validation model through the first"
         " part of a dataloader",
@@ -278,3 +287,56 @@ if __name__ == "__main__":
         print(f"Batch {i + 1} / {args.count}")
         model.process_batch(image, mask, "val")
     print("Check for viz images in /tmp/, model output will be nonsense")
+
+
+def get_model_locally():
+    parser = argparse.ArgumentParser(
+        description="Download wandb model, link to /tmp/LATEST"
+    )
+    parser.add_argument(
+        "save_dir", type=Path, help="Path to dir where model should be saved"
+    )
+    parser.add_argument(
+        "wandb_run_path", help="Path to wandb run (e.g. cnn-segmentation/qu12teag)"
+    )
+    args = parser.parse_args()
+
+    assert args.save_dir.is_dir()
+
+    # Log into wandb
+    keyfile = Path(getenv("HOME")) / "wandb.json"
+    assert keyfile.is_file()
+    wandb.login(key=json.load(keyfile.open("r"))["key"])
+
+    # There are two files, the .pth model file and the .yaml config
+    paths = []
+    for filename, latest in [
+        ("checkpoint.pth", "LATEST_PTH"),
+        ("config.yaml", "LATEST_YAML"),
+    ]:
+        path = Path(
+            wandb.restore(
+                name=filename, run_path=args.wandb_run_path, replace=True
+            ).name
+        )
+
+        # Do some surgery and insert the run path
+        run_key = args.wandb_run_path.replace("/", "_")
+        name = path.name.replace(".", f"_{run_key}.")
+
+        # Move to the save dir
+        final_path = args.save_dir / name
+        rename(path, final_path)
+        paths.append(final_path)
+
+        # Softlink to these files in the /tmp/ directory
+        (Path("/tmp/") / latest).symlink_to(final_path)
+
+    print("Downloaded and symlinked the following model files:")
+    for path in paths:
+        print(f"\t{path}")
+
+
+if __name__ == "__main__":
+    # test_dataloader()
+    get_model_locally()
